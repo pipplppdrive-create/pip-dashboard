@@ -7,6 +7,15 @@
 @theme {
   --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
 
+  /*
+   * Aksesibilitas (WCAG AA): teks sekunder aplikasi memakai slate-400/500.
+   * Kedua step dinaikkan satu tingkat dari bawaan Tailwind agar teks sekunder
+   * memenuhi kontras 4.5:1 di atas putih (slate-400) dan di atas latar
+   * slate-100/200 (slate-500).
+   */
+  --color-slate-400: #62748e;
+  --color-slate-500: #45556c;
+
   /* Warna utama (biru pemerintahan, modern) */
   --color-brand-50: #f0f6ff;
   --color-brand-100: #e0edfe;
@@ -55,6 +64,13 @@
 html {
   font-family: var(--font-sans);
   scrollbar-gutter: stable;
+  /*
+   * Dokumen tidak boleh menggulir horizontal — seluruh scroll horizontal
+   * terjadi di kontainer yang dirancang untuk itu (board kanban, tabel).
+   * Chromium menyatukan overflow scroll-container tertentu ke rentang gulir
+   * dokumen; hidden mencegah pengguna menggulir ke area kosong.
+   */
+  overflow-x: hidden;
 }
 
 /* Skala membesar untuk layar sangat besar (TV 1920×1080 dilihat dari jauh) */

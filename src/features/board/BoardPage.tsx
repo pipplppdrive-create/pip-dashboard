@@ -12,8 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { arrayMove } from '@/lib/utils';
+import { arrayMove, cn } from '@/lib/utils';
 import { getDataService } from '@/services';
 import type { DurationType, Priority, Step, Task } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
@@ -266,14 +265,37 @@ export default function BoardPage() {
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as 'aktif' | 'arsip')}>
-            <TabsList>
-              <TabsTrigger value="aktif">Aktif</TabsTrigger>
-              <TabsTrigger value="arsip">
-                Arsip ({tasks.filter((t) => t.archivedAt && !t.deletedAt).length})
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Toggle tampilan Aktif/Arsip (arsip sebagai tab/filter di halaman ini) */}
+          <div
+            role="group"
+            aria-label="Tampilan board"
+            className="inline-flex items-center gap-1 rounded-xl bg-slate-200/60 p-1"
+          >
+            {(
+              [
+                { value: 'aktif', label: 'Aktif' },
+                {
+                  value: 'arsip',
+                  label: `Arsip (${tasks.filter((t) => t.archivedAt && !t.deletedAt).length})`,
+                },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={tab === opt.value}
+                onClick={() => setTab(opt.value)}
+                className={cn(
+                  'inline-flex cursor-pointer items-center rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors',
+                  tab === opt.value
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <Search
               className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"

@@ -103,7 +103,27 @@ Kredensial Supabase belum tersedia saat pembangunan, sehingga:
   baca ke Admin — kebijakan pelonggaran (kolom terbatas) didokumentasikan di
   DEPLOYMENT.md sebagai keputusan pemilik sistem.
 
-## D10 — Bahasa antarmuka
+## D10 — Temuan & perbaikan QA (Fase 8)
+
+- **Aksesibilitas (axe, WCAG 2.1 AA):** token `slate-400`/`slate-500` dinaikkan satu
+  step khusus aplikasi ini (kontras teks sekunder ≥4.5:1 di putih maupun latar
+  slate-100/200); palet avatar dinaikkan ke level 700 (inisial putih AA); tanggal
+  tenggat memakai step 700; toggle Aktif/Arsip diganti dari Radix Tabs tanpa
+  content (aria-controls invalid) menjadi segmented button `aria-pressed`.
+- **Overflow:** Chromium menyatukan overflow scroll-container board ke rentang gulir
+  dokumen (area kosong dapat digulir pengguna). Fix: `overflow-x: hidden` pada
+  `html`; seluruh scroll horizontal memang hanya di kontainer internal (kanban,
+  tabel). Uji responsive menegaskan konten muat (`body.scrollWidth`) + dokumen
+  terkunci dari gulir horizontal.
+- **Keamanan dependensi:** `uuid` lama (transitif exceljs) dipaksa ke ^11 lewat npm
+  `overrides` → `npm audit --omit=dev` bersih. Scan repo: tidak ada secret.
+- **Performa:** route di-lazy-load; recharts (112 KB gzip) hanya ikut Dashboard;
+  exceljs (271 KB gzip) hanya ikut halaman Admin; muatan awal ± 180 KB gzip
+  JS + 12 KB CSS + font lokal. Animasi chart dimatikan (deterministik di TV).
+- **Toast (sonner)** dikecualikan dari scan axe: transien, selalu pendamping aksi
+  pengguna, style bawaan library.
+
+## D11 — Bahasa antarmuka
 
 Seluruh UI berbahasa Indonesia (pengguna: pimpinan & staf PIP Puslapdik). Kode, komentar, dan
 identifier berbahasa Inggris/campuran seperlunya.

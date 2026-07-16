@@ -170,7 +170,7 @@ test.describe('board pekerjaan', () => {
     await dialog.getByRole('button', { name: 'Arsipkan' }).click();
     await expect(page.getByText('Pekerjaan diarsipkan.')).toBeVisible();
     // Tab arsip
-    await page.getByRole('tab', { name: /Arsip/ }).click();
+    await page.getByRole('button', { name: /Arsip/ }).click();
     const row = page.getByText('Rapat koordinasi teknis dengan bank penyalur');
     await expect(row).toBeVisible();
     await page
@@ -178,7 +178,7 @@ test.describe('board pekerjaan', () => {
       .getByRole('button', { name: 'Pulihkan' })
       .click();
     await expect(page.getByText('Dipulihkan dari arsip.')).toBeVisible();
-    await page.getByRole('tab', { name: 'Aktif' }).click();
+    await page.getByRole('button', { name: 'Aktif', exact: true }).click();
     await expect(
       column(page, 'Done').getByText('Rapat koordinasi teknis dengan bank penyalur'),
     ).toBeVisible();
@@ -241,6 +241,9 @@ test.describe('board pekerjaan', () => {
     const page2 = await context.newPage();
     await page2.goto('/pekerjaan');
     await expect(page2.getByText('Board Pekerjaan Tim PIP')).toBeVisible();
+    // Tab 2 di depan agar tidak terkena throttling tab background headless;
+    // seluruh aksi berikutnya terjadi di tab 1 (latar belakang).
+    await page2.bringToFront();
 
     // Buat pekerjaan di tab 1
     await page1.getByRole('button', { name: 'Pekerjaan baru' }).click();

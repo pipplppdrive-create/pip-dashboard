@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, FileClock, XCircle } from 'lucide-react';
 import { EmptyState } from '@/components/feedback/empty-state';
@@ -187,9 +187,8 @@ export function AuditSection() {
                     const emp = entry.employeeId ? byId.get(entry.employeeId) : null;
                     const isOpen = expanded === entry.id;
                     return (
-                      <>
+                      <Fragment key={entry.id}>
                         <tr
-                          key={entry.id}
                           className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
                           onClick={() => setExpanded(isOpen ? null : entry.id)}
                         >
@@ -229,7 +228,7 @@ export function AuditSection() {
                           </td>
                         </tr>
                         {isOpen && (
-                          <tr key={`${entry.id}-detail`} className="border-b border-slate-100 bg-slate-50/60">
+                          <tr className="border-b border-slate-100 bg-slate-50/60">
                             <td colSpan={7} className="px-4 py-3">
                               <div className="grid gap-3 text-xs lg:grid-cols-2">
                                 <div>
@@ -253,7 +252,7 @@ export function AuditSection() {
                             </td>
                           </tr>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </tbody>

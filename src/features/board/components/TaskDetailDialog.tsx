@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
@@ -274,7 +274,7 @@ export function TaskDetailDialog({
         {/* Meta */}
         <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Kategori & label</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Kategori & label</p>
             <div className="mt-1 flex flex-wrap gap-1">
               {category ? (
                 <Badge tone="outline" dotColor={category.color}>
@@ -291,20 +291,20 @@ export function TaskDetailDialog({
             </div>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Prioritas & durasi</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Prioritas & durasi</p>
             <p className="mt-1 font-semibold text-slate-700">
               {PRIORITY_LABEL[task.priority]} · {DURATION_LABEL[task.durationType]}
             </p>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">Jadwal</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase">Jadwal</p>
             <p className="mt-1 inline-flex items-center gap-1.5 font-semibold text-slate-700">
               <CalendarClock className="size-3.5 text-slate-400" aria-hidden />
               {formatDate(task.startDate)} → {formatDate(task.dueDate)}
             </p>
           </div>
           <div className="sm:col-span-2">
-            <p className="text-[11px] font-bold text-slate-400 uppercase">PIC</p>
+            <p className="text-[11px] font-bold text-slate-500 uppercase">PIC</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               {picMain && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white py-0.5 pr-2.5 pl-0.5 shadow-sm">
@@ -329,7 +329,7 @@ export function TaskDetailDialog({
             </div>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase">
+            <p className="text-[11px] font-bold text-slate-500 uppercase">
               Progres ({task.progressMode === 'CHECKLIST' ? 'otomatis dari checklist' : 'manual'})
             </p>
             <div className="mt-1.5">

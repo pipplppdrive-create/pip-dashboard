@@ -114,8 +114,8 @@ export function TaskCard({
             <span
               className={cn(
                 'inline-flex items-center gap-1 font-medium',
-                overdue && 'text-danger-600',
-                dueToday && 'text-warning-600',
+                overdue && 'text-danger-700',
+                dueToday && 'text-warning-700',
               )}
             >
               <CalendarClock className="size-3" aria-hidden />

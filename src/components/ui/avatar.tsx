@@ -1,18 +1,21 @@
 import { cn } from '@/lib/utils';
 import type { Employee } from '@/services/types';
 
-/** Palet warna avatar — kunci disimpan pada data pegawai, bukan hex bebas. */
+/**
+ * Palet warna avatar — kunci disimpan pada data pegawai, bukan hex bebas.
+ * Seluruh warna level 700 agar inisial putih memenuhi kontras WCAG AA (≥4.5:1).
+ */
 export const AVATAR_COLORS: Record<string, string> = {
-  blue: 'bg-brand-600',
-  sky: 'bg-info-600',
-  emerald: 'bg-success-600',
-  amber: 'bg-warning-600',
-  rose: 'bg-danger-600',
-  violet: 'bg-violet-600',
-  fuchsia: 'bg-fuchsia-600',
-  teal: 'bg-teal-600',
+  blue: 'bg-brand-700',
+  sky: 'bg-info-700',
+  emerald: 'bg-success-700',
+  amber: 'bg-warning-700',
+  rose: 'bg-danger-700',
+  violet: 'bg-violet-700',
+  fuchsia: 'bg-fuchsia-700',
+  teal: 'bg-teal-700',
   slate: 'bg-slate-600',
-  orange: 'bg-orange-600',
+  orange: 'bg-orange-700',
 };
 
 export const AVATAR_COLOR_KEYS = Object.keys(AVATAR_COLORS);
