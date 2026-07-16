@@ -1,5 +1,6 @@
 import { test } from '@playwright/test';
 import path from 'node:path';
+import { loginAsAdmin } from './helpers';
 
 /**
  * Pengambilan screenshot pada seluruh ukuran wajib.
@@ -19,12 +20,7 @@ const PAGES: Array<{ name: string; path: string }> = [
   { name: 'dashboard', path: '/dashboard' },
   { name: 'pekerjaan', path: '/pekerjaan' },
   { name: 'admin', path: '/admin' },
-  { name: 'login', path: '/login' },
 ];
-
-if (process.env.SCREENSHOTS_DEV_GALLERY) {
-  PAGES.push({ name: 'ui-gallery', path: '/dev/ui' });
-}
 
 const enabled = !!process.env.SCREENSHOTS;
 const outDir = process.env.SHOT_DIR ?? 'screenshots/current';
@@ -35,13 +31,16 @@ test.describe('screenshots', () => {
   for (const vp of VIEWPORTS) {
     test(`ambil ${vp.name}`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
+      // Halaman login (belum masuk)
+      await page.goto('/login');
+      await page.waitForLoadState('networkidle');
+      await page.screenshot({ path: path.join(outDir, `login--${vp.name}.png`) });
+
+      await loginAsAdmin(page);
       for (const p of PAGES) {
         await page.goto(p.path);
         await page.waitForLoadState('networkidle');
-        await page.screenshot({
-          path: path.join(outDir, `${p.name}--${vp.name}.png`),
-          fullPage: false,
-        });
+        await page.screenshot({ path: path.join(outDir, `${p.name}--${vp.name}.png`) });
       }
     });
   }

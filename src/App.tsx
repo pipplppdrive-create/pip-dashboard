@@ -1,16 +1,35 @@
-import { lazy, Suspense } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router';
+import { RealtimeBridge } from '@/app/RealtimeBridge';
 import { ConfirmProvider } from '@/components/feedback/confirm-dialog';
 import { AppToaster } from '@/components/feedback/toaster';
 import { AppShell } from '@/components/layout/AppShell';
-import { TooltipProvider } from '@/components/ui/tooltip';
+import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
+import { ActorPickerDialog } from '@/features/auth/ActorPickerDialog';
+import { RequireAdmin, RequireAuth, SessionBoot } from '@/features/auth/guards';
+import { UserMenu } from '@/features/auth/UserMenu';
+import { useSessionStore } from '@/features/auth/session-store';
+import { useAppSettings, useEmployees } from '@/hooks/queries';
 import { ROUTES } from '@/lib/routes';
+import { getDataService } from '@/services';
 
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'));
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'));
 const BoardPage = lazy(() => import('@/features/board/BoardPage'));
 const AdminPage = lazy(() => import('@/features/admin/AdminPage'));
 const UiGalleryPage = import.meta.env.DEV ? lazy(() => import('@/features/dev/UiGalleryPage')) : null;
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 15_000,
+      retry: 1,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 function RouteFallback() {
   return (
@@ -32,10 +51,47 @@ function NotFoundPage() {
   );
 }
 
-function ShellLayout() {
+function DataModeBadge() {
+  if (getDataService().mode !== 'local') return null;
   return (
-    <AppShell>
+    <Tooltip content="Mode demo tanpa backend — seluruh data tersimpan di perangkat ini dan tersinkron antar-tab.">
+      <span>
+        <Badge tone="warning">Data lokal</Badge>
+      </span>
+    </Tooltip>
+  );
+}
+
+function ShellLayout() {
+  const { role, session, actorId, openActorPicker } = useSessionStore();
+  const { data: settings } = useAppSettings();
+  const { data: employees } = useEmployees(false);
+  const promptedRef = useRef<string | null>(null);
+
+  // Setelah login, minta pilih pegawai pelaku bila belum ada / tidak valid lagi.
+  useEffect(() => {
+    if (!session || !employees) return;
+    const valid = actorId !== null && employees.some((e) => e.id === actorId);
+    if (!valid && promptedRef.current !== session.id) {
+      promptedRef.current = session.id;
+      openActorPicker();
+    }
+  }, [session, employees, actorId, openActorPicker]);
+
+  return (
+    <AppShell
+      role={role ?? 'USER'}
+      appName={settings?.appName ?? 'Dashboard PIP'}
+      logoDataUrl={settings?.logoDataUrl ?? null}
+      headerExtra={
+        <div className="flex items-center gap-2.5">
+          <DataModeBadge />
+          <UserMenu />
+        </div>
+      }
+    >
       <Outlet />
+      <ActorPickerDialog />
     </AppShell>
   );
 }
@@ -43,24 +99,42 @@ function ShellLayout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <TooltipProvider>
-        <ConfirmProvider>
-          <AppToaster />
-          <Suspense fallback={<RouteFallback />}>
-            <Routes>
-              <Route path="/" element={<Navigate to={ROUTES.dashboard} replace />} />
-              <Route path={ROUTES.login} element={<LoginPage />} />
-              <Route element={<ShellLayout />}>
-                <Route path={ROUTES.dashboard} element={<DashboardPage />} />
-                <Route path={ROUTES.pekerjaan} element={<BoardPage />} />
-                <Route path={`${ROUTES.admin}/*`} element={<AdminPage />} />
-              </Route>
-              {UiGalleryPage && <Route path="/dev/ui" element={<UiGalleryPage />} />}
-              <Route path="*" element={<NotFoundPage />} />
-            </Routes>
-          </Suspense>
-        </ConfirmProvider>
-      </TooltipProvider>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <ConfirmProvider>
+            <AppToaster />
+            <RealtimeBridge />
+            <SessionBoot>
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/" element={<Navigate to={ROUTES.dashboard} replace />} />
+                  <Route path={ROUTES.login} element={<LoginPage />} />
+                  <Route
+                    element={
+                      <RequireAuth>
+                        <ShellLayout />
+                      </RequireAuth>
+                    }
+                  >
+                    <Route path={ROUTES.dashboard} element={<DashboardPage />} />
+                    <Route path={ROUTES.pekerjaan} element={<BoardPage />} />
+                    <Route
+                      path={`${ROUTES.admin}/*`}
+                      element={
+                        <RequireAdmin>
+                          <AdminPage />
+                        </RequireAdmin>
+                      }
+                    />
+                  </Route>
+                  {UiGalleryPage && <Route path="/dev/ui" element={<UiGalleryPage />} />}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </Suspense>
+            </SessionBoot>
+          </ConfirmProvider>
+        </TooltipProvider>
+      </QueryClientProvider>
     </BrowserRouter>
   );
 }

@@ -10,10 +10,10 @@ import { BrandMark } from './BrandMark';
 
 interface AppShellProps {
   children: ReactNode;
-  role?: Role;
+  role: Role;
   appName?: string;
   logoDataUrl?: string | null;
-  /** Slot kanan header (chip pegawai aktif, status realtime — Fase 3+). */
+  /** Slot kanan header (badge mode data, menu pengguna). */
   headerExtra?: ReactNode;
 }
 
@@ -24,7 +24,7 @@ interface AppShellProps {
  */
 export function AppShell({
   children,
-  role = 'ADMIN',
+  role,
   appName = 'Dashboard PIP',
   logoDataUrl = null,
   headerExtra,
@@ -96,7 +96,7 @@ export function AppShell({
       </aside>
 
       {/* App bar — mobile/tablet */}
-      <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 flex items-center gap-3 border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur lg:hidden">
         <BrandMark logoDataUrl={logoDataUrl} className="size-8" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm leading-tight font-bold text-slate-900">
@@ -108,11 +108,11 @@ export function AppShell({
       </header>
 
       {/* Header — desktop */}
-      <header className="sticky top-0 z-30 hidden items-center justify-between gap-4 border-b border-slate-200/80 bg-slate-100/85 px-8 py-4 backdrop-blur lg:flex">
+      <header className="sticky top-0 z-30 hidden items-center justify-between gap-4 border-b border-slate-200/80 bg-slate-100/85 px-8 py-3.5 backdrop-blur lg:flex">
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
           {active?.label ?? appName}
         </h1>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <p className="tnum text-sm font-medium text-slate-500" aria-label="Waktu saat ini">
             {format(now, 'EEEE, d MMMM yyyy · HH.mm', { locale: localeId })}
           </p>
