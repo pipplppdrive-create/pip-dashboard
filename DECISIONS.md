@@ -82,7 +82,28 @@ diminta spesifikasi dan menambah kompleksitas navigasi yang dikunci.
 - **Tema:** satu tema terang yang dioptimalkan untuk TV & ruang kerja; dark mode tidak dibangun
   pada versi awal (menjaga cakupan QA), dapat ditambah kemudian karena token sudah terpusat.
 
-## D9 — Bahasa antarmuka
+## D9 — Backend produksi tanpa kredensial (Fase 7)
+
+Kredensial Supabase belum tersedia saat pembangunan, sehingga:
+
+- **Seluruh backend tetap dikerjakan penuh**: migration (skema + RLS + realtime +
+  storage + fungsi RPC atomik), adapter produksi (`src/services/supabase/`),
+  edge function `admin-actions` — namun **belum teruji terhadap server nyata**
+  (checklist verifikasi ada di `DEPLOYMENT.md`).
+- **Operasi rawan balapan dipindah ke server** sebagai fungsi Postgres atomik:
+  `activate_snapshot` (satu aktif per scope), `move_task` (reorder konsisten),
+  `delete_step_safe` (kartu wajib dipindah dulu).
+- **Sesi perangkat** memakai tabel `device_sessions` (bukan ban akun) karena akun
+  User dipakai bersama — mencabut satu perangkat tidak boleh menendang semua.
+- **Ganti password akun User** butuh service role → edge function; service role
+  key tidak pernah menyentuh frontend.
+- **Mock data hanya hidup di adapter lokal**; mode `supabase` tidak menyentuh
+  seed sama sekali. Mode dipilih lewat `VITE_DATA_MODE`.
+- Feed "Aktivitas terbaru" di produksi membaca `audit_log`; RLS default membatasi
+  baca ke Admin — kebijakan pelonggaran (kolom terbatas) didokumentasikan di
+  DEPLOYMENT.md sebagai keputusan pemilik sistem.
+
+## D10 — Bahasa antarmuka
 
 Seluruh UI berbahasa Indonesia (pengguna: pimpinan & staf PIP Puslapdik). Kode, komentar, dan
 identifier berbahasa Inggris/campuran seperlunya.

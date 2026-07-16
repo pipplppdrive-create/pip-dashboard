@@ -35,7 +35,8 @@ Atur lewat `.env.local` (salin dari `.env.example`):
 - `VITE_DATA_MODE=local` *(default)* — tanpa backend; data contoh tersimpan di perangkat.
   Kredensial development mode lokal didokumentasikan di [`DEVELOPMENT.md`](DEVELOPMENT.md).
 - `VITE_DATA_MODE=supabase` — backend produksi; wajib mengisi `VITE_SUPABASE_URL` dan
-  `VITE_SUPABASE_ANON_KEY`.
+  `VITE_SUPABASE_ANON_KEY`. Setup lengkap (migration, akun, edge function, hosting):
+  [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ## Skrip
 

@@ -1,9 +1,13 @@
 import { uid } from '@/lib/utils';
 import { NotFoundError, ValidationError } from '@/services/errors';
-import { JENJANG_LIST, type DistributionRow, type DistributionService, type DistributionSnapshot } from '@/services/types';
+import { validateRows, validateScope } from '@/services/distribution-validation';
+import type { DistributionService, DistributionSnapshot } from '@/services/types';
 import { localBus } from './bus';
 import { COL, db, ensureSeeded, nowISO, writeAudit } from './db';
 import { requireActor, requireAdmin, requireSession } from './guard-util';
+
+// Re-export agar pemakai lama tetap berfungsi (kini modul bersama).
+export { validateRows, validateScope } from '@/services/distribution-validation';
 
 function auditBase(employeeId: string) {
   const session = requireAdmin();
@@ -18,54 +22,6 @@ function auditBase(employeeId: string) {
 
 export function snapshotLabel(s: Pick<DistributionSnapshot, 'year' | 'period'>): string {
   return `Penyaluran ${s.year} · ${s.period}`;
-}
-
-/** Validasi baris agregat — dipakai upload, koreksi, dan test. */
-export function validateRows(rows: DistributionRow[]): string[] {
-  const errors: string[] = [];
-  if (rows.length === 0) errors.push('Data kosong — tidak ada baris yang dapat disimpan.');
-  const seen = new Set<string>();
-  rows.forEach((row, i) => {
-    const rowLabel = `Baris ${i + 1} (${row.jenjang || '?'})`;
-    if (!JENJANG_LIST.includes(row.jenjang)) {
-      errors.push(`${rowLabel}: jenjang tidak valid (harus SD/SMP/SMA/SMK).`);
-      return;
-    }
-    if (seen.has(row.jenjang)) errors.push(`${rowLabel}: jenjang ${row.jenjang} duplikat.`);
-    seen.add(row.jenjang);
-    const numbers: Array<[string, number]> = [
-      ['alokasi siswa', row.alokasiSiswa],
-      ['alokasi anggaran', row.alokasiAnggaran],
-      ['SK siswa', row.skSiswa],
-      ['SK anggaran', row.skAnggaran],
-      ['salur siswa', row.salurSiswa],
-      ['salur anggaran', row.salurAnggaran],
-    ];
-    for (const [label, value] of numbers) {
-      if (!Number.isFinite(value)) errors.push(`${rowLabel}: ${label} bukan angka.`);
-      else if (value < 0) errors.push(`${rowLabel}: ${label} tidak boleh negatif.`);
-      else if (!Number.isInteger(value)) errors.push(`${rowLabel}: ${label} harus bilangan bulat.`);
-    }
-    if (row.skSiswa > row.alokasiSiswa)
-      errors.push(`${rowLabel}: SK siswa melebihi alokasi siswa.`);
-    if (row.salurSiswa > row.alokasiSiswa)
-      errors.push(`${rowLabel}: siswa tersalur melebihi alokasi siswa.`);
-    if (row.salurAnggaran > row.alokasiAnggaran)
-      errors.push(`${rowLabel}: dana tersalur melebihi alokasi anggaran.`);
-    if (row.skAnggaran > row.alokasiAnggaran)
-      errors.push(`${rowLabel}: SK anggaran melebihi alokasi anggaran.`);
-  });
-  return errors;
-}
-
-export function validateScope(year: number, period: string): string[] {
-  const errors: string[] = [];
-  if (!Number.isInteger(year) || year < 2020 || year > 2100) {
-    errors.push('Tahun tidak valid (2020–2100).');
-  }
-  if (!period.trim()) errors.push('Periode wajib diisi.');
-  if (period.trim().length > 30) errors.push('Periode maksimal 30 karakter.');
-  return errors;
 }
 
 function getSnapshotOrThrow(id: string): DistributionSnapshot {
