@@ -20,7 +20,14 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+      'react-refresh/only-export-components': [
+        'warn',
+        {
+          allowConstantExport: true,
+          // Ekspor non-komponen yang aman & disengaja pada file komponen.
+          allowExportNames: ['notify', 'useConfirm', 'AVATAR_COLORS', 'AVATAR_COLOR_KEYS'],
+        },
+      ],
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

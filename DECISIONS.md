@@ -66,7 +66,23 @@ diminta spesifikasi dan menambah kompleksitas navigasi yang dikunci.
 - **Plus Jakarta Sans** (self-host via Fontsource): terbaca baik pada TV, karakter modern
   profesional, mendukung angka tabular; tanpa permintaan CDN eksternal.
 
-## D8 — Bahasa antarmuka
+## D8 — Desain visual (Fase 2)
+
+- **Identitas:** sidebar navy gelap (gradien slate-900 → brand-950) + konten terang slate-100 —
+  kontras tinggi, berkarakter, nyaman dilihat lama di TV; area kerja tetap putih bersih.
+- **Font:** Plus Jakarta Sans (variable, self-host). Angka statistik memakai `tabular-nums`.
+- **Skala TV:** root font 16px → 18px pada layar ≥1880px; seluruh ukuran berbasis rem ikut
+  membesar — memenuhi keterbacaan TV 1920×1080 tanpa membuat "Mode TV" khusus (dilarang spec).
+- **Breakpoint navigasi:** ≥1024px sidebar; di bawahnya app bar + bottom tab navigation
+  (ramah jempol di ponsel/tablet portrait).
+- **Aksesibilitas dasar:** skip-link, focus ring 2px konsisten, landmark & label ARIA,
+  `prefers-reduced-motion` dihormati, target sentuh ≥40px pada kontrol utama.
+- **Feedback:** toast (sonner) untuk sukses/gagal, dialog konfirmasi berbasis promise untuk
+  aksi berisiko, `EmptyState`/`ErrorState`/`LoadingBlock` seragam untuk state konten.
+- **Tema:** satu tema terang yang dioptimalkan untuk TV & ruang kerja; dark mode tidak dibangun
+  pada versi awal (menjaga cakupan QA), dapat ditambah kemudian karena token sudah terpusat.
+
+## D9 — Bahasa antarmuka
 
 Seluruh UI berbahasa Indonesia (pengguna: pimpinan & staf PIP Puslapdik). Kode, komentar, dan
 identifier berbahasa Inggris/campuran seperlunya.
