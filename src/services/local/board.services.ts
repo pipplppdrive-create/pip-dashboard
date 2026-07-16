@@ -675,6 +675,12 @@ export const localTasks: TaskService = {
       .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   },
 
+  async listAllComments(): Promise<TaskComment[]> {
+    await ensureSeeded();
+    requireSession();
+    return [...db.comments()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  },
+
   async addComment(taskId, type: CommentType, text, ctx): Promise<TaskComment> {
     await ensureSeeded();
     requireSession();

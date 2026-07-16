@@ -14,15 +14,15 @@ test.describe('smoke: kerangka aplikasi', () => {
     const nav = page.getByRole('navigation', { name: 'Menu' });
     await nav.getByRole('link', { name: 'Pekerjaan' }).click();
     await expect(page).toHaveURL(/\/pekerjaan$/);
-    await expect(page.getByRole('heading', { name: 'Pekerjaan' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Pekerjaan', exact: true })).toBeVisible();
 
     await nav.getByRole('link', { name: 'Admin' }).click();
     await expect(page).toHaveURL(/\/admin$/);
-    await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible();
 
     await nav.getByRole('link', { name: 'Dashboard' }).click();
     await expect(page).toHaveURL(/\/dashboard$/);
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
 
     expect(errors).toEqual([]);
   });

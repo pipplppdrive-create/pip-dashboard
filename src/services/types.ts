@@ -512,6 +512,8 @@ export interface TaskService {
   /** Hanya Admin. */
   permanentDelete(id: string, ctx: ActorContext): Promise<void>;
   listComments(taskId: string): Promise<TaskComment[]>;
+  /** Seluruh komentar (untuk analisis "memerlukan tindak lanjut" di Dashboard). */
+  listAllComments(): Promise<TaskComment[]>;
   addComment(taskId: string, type: CommentType, text: string, ctx: ActorContext): Promise<TaskComment>;
   history(taskId: string): Promise<AuditEntry[]>;
 }

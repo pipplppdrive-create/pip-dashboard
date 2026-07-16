@@ -34,6 +34,17 @@ export function formatRupiahCompact(value: number): string {
   return `${sign}Rp${nfID.format(Math.round(abs))}`;
 }
 
+const nfCompact = new Intl.NumberFormat('id-ID', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+/** 10_400_000 → "10,4 jt" (ringkas untuk sumbu & label chart). */
+export function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return '–';
+  return nfCompact.format(value);
+}
+
 /** 0.734 (rasio) → "73,4%" */
 export function formatPercent(ratio: number, digits = 1): string {
   if (!Number.isFinite(ratio)) return '–';

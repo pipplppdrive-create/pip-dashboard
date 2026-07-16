@@ -49,3 +49,73 @@ export function useSessions(enabled: boolean) {
     enabled,
   });
 }
+
+export function useBoard() {
+  return useQuery({
+    queryKey: qk.board(),
+    queryFn: () => getDataService().board.get(),
+  });
+}
+
+export function useSteps(includeDeleted = false) {
+  return useQuery({
+    queryKey: qk.steps(includeDeleted),
+    queryFn: () => getDataService().board.listSteps({ includeDeleted }),
+  });
+}
+
+export function useTasks(opts?: { includeArchived?: boolean; includeDeleted?: boolean }) {
+  return useQuery({
+    queryKey: qk.tasks(opts),
+    queryFn: () => getDataService().tasks.list(opts),
+  });
+}
+
+export function useAllComments() {
+  return useQuery({
+    queryKey: ['comments', 'all'] as const,
+    queryFn: () => getDataService().tasks.listAllComments(),
+  });
+}
+
+export function useCategories(includeInactive = false) {
+  return useQuery({
+    queryKey: qk.categories(includeInactive),
+    queryFn: () => getDataService().taxonomy.listCategories({ includeInactive }),
+  });
+}
+
+export function useLabels(includeInactive = false) {
+  return useQuery({
+    queryKey: qk.labels(includeInactive),
+    queryFn: () => getDataService().taxonomy.listLabels({ includeInactive }),
+  });
+}
+
+export function useActiveSnapshot(year?: number, period?: string) {
+  return useQuery({
+    queryKey: qk.distributionActive(year, period),
+    queryFn: () => getDataService().distribution.getActive(year, period),
+  });
+}
+
+export function useSnapshots() {
+  return useQuery({
+    queryKey: qk.distributionList(),
+    queryFn: () => getDataService().distribution.list(),
+  });
+}
+
+export function useDistributionScopes() {
+  return useQuery({
+    queryKey: qk.distributionScopes(),
+    queryFn: () => getDataService().distribution.listScopes(),
+  });
+}
+
+export function useRecentActivity(limit = 15) {
+  return useQuery({
+    queryKey: qk.activity(limit),
+    queryFn: () => getDataService().audit.recentActivity(limit),
+  });
+}
