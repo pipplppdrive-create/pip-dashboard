@@ -1,20 +1,26 @@
 /**
  * DATA CONTOH (MOCK) — hanya untuk mode lokal/development.
- * Tidak dipakai oleh adapter produksi. Seluruh nama pegawai fiktif.
+ * Tidak dipakai oleh adapter produksi.
+ * Pegawai memakai seed resmi 25 pegawai (Docs/09 §P) — sama dengan seed produksi.
  * Data penyaluran hanya agregat per jenjang — tanpa data individual siswa.
  */
 import type {
+  ActivityPlanItem,
   AppSettings,
   AuditEntry,
   BoardInfo,
   Category,
   ChecklistGroup,
+  ColumnMapping,
   DistributionRow,
   DistributionSnapshot,
   Employee,
   Jenjang,
   Label,
+  SheetBinding,
+  SpreadsheetSource,
   Step,
+  SyncRun,
   Task,
   TaskComment,
   TaskTemplate,
@@ -37,7 +43,7 @@ const dateDaysAgo = (n: number) => isoDate(now - n * DAY);
 const dateDaysFromNow = (n: number) => isoDate(now + n * DAY);
 
 // ---------------------------------------------------------------------------
-// Pegawai (fiktif)
+// Pegawai — seed resmi 25 pegawai (Docs/09 §P). Tag board satu kata & unik.
 // ---------------------------------------------------------------------------
 
 interface EmployeeSpec {
@@ -46,23 +52,41 @@ interface EmployeeSpec {
   displayName: string;
   initials: string;
   color: string;
+  nip: string | null;
   position: string;
   team: string;
   active?: boolean;
 }
 
-const EMPLOYEES: EmployeeSpec[] = [
-  { id: 'emp-bambang', fullName: 'Bambang Prasetyo', displayName: 'Bambang', initials: 'BP', color: 'blue', position: 'Ketua Tim PIP', team: 'Pimpinan Tim' },
-  { id: 'emp-rina', fullName: 'Rina Wahyuni', displayName: 'Rina', initials: 'RW', color: 'emerald', position: 'Analis Kebijakan', team: 'Kebijakan & Regulasi' },
-  { id: 'emp-andi', fullName: 'Andi Saputra', displayName: 'Andi', initials: 'AS', color: 'amber', position: 'Pengolah Data', team: 'Data & Sistem' },
-  { id: 'emp-dewi', fullName: 'Dewi Lestari', displayName: 'Dewi', initials: 'DL', color: 'rose', position: 'Verifikator Penyaluran', team: 'Penyaluran' },
-  { id: 'emp-fajar', fullName: 'Fajar Ramadhan', displayName: 'Fajar', initials: 'FR', color: 'violet', position: 'Pengembang Sistem', team: 'Data & Sistem' },
-  { id: 'emp-siti', fullName: 'Siti Nurjanah', displayName: 'Siti', initials: 'SN', color: 'teal', position: 'Penata Keuangan', team: 'Keuangan' },
-  { id: 'emp-hendra', fullName: 'Hendra Gunawan', displayName: 'Hendra', initials: 'HG', color: 'orange', position: 'Koordinator Rekonsiliasi', team: 'Penyaluran' },
-  { id: 'emp-maya', fullName: 'Maya Anggraini', displayName: 'Maya', initials: 'MA', color: 'fuchsia', position: 'Penata Layanan', team: 'Layanan & Pengaduan' },
-  { id: 'emp-yusuf', fullName: 'Yusuf Hidayat', displayName: 'Yusuf', initials: 'YH', color: 'sky', position: 'Analis Data', team: 'Data & Sistem' },
-  { id: 'emp-putri', fullName: 'Putri Maharani', displayName: 'Putri', initials: 'PM', color: 'slate', position: 'Administrator Aplikasi', team: 'Data & Sistem' },
-  { id: 'emp-agus', fullName: 'Agus Salim', displayName: 'Agus', initials: 'AG', color: 'orange', position: 'Staf Penyaluran', team: 'Penyaluran', active: false },
+const PUSLAPDIK = 'Puslapdik';
+const PLPP = 'Pusat Layanan Pembiayaan Pendidikan';
+
+export const EMPLOYEES: EmployeeSpec[] = [
+  { id: 'emp-rakean', fullName: 'Rakean Sundayana, S.Pd., M.A', displayName: 'Rakean', initials: 'RS', color: 'blue', nip: '198102082005011003', position: 'Ketua Tim Kerja Kemitraan dan Tata Kelola Program', team: PUSLAPDIK },
+  { id: 'emp-thoriq', fullName: 'Thoriq Rozaq Rosyadi', displayName: 'Thoriq', initials: 'TR', color: 'emerald', nip: '199412252022031015', position: 'Penelaah Teknis Kebijakan', team: PUSLAPDIK },
+  { id: 'emp-hesti', fullName: 'Tri Hesti Wahyudiati', displayName: 'Hesti', initials: 'TH', color: 'rose', nip: '197008102007102001', position: 'Penelaah Teknis Kebijakan', team: PUSLAPDIK },
+  { id: 'emp-erna', fullName: 'Erna Fitriawati Novi Hastuti', displayName: 'Erna', initials: 'EF', color: 'violet', nip: '198309252008122002', position: 'Penelaah Teknis Kebijakan', team: PUSLAPDIK },
+  { id: 'emp-yusna', fullName: 'Yusna Yurita', displayName: 'Yusna', initials: 'YY', color: 'teal', nip: '198209242014042001', position: 'Penelaah Teknis Kebijakan', team: PUSLAPDIK },
+  { id: 'emp-sucianingsih', fullName: 'Sucianingsih', displayName: 'Sucianingsih', initials: 'SC', color: 'amber', nip: '1990031020015042003', position: 'Perencana Ahli Pertama', team: PUSLAPDIK },
+  { id: 'emp-entin', fullName: 'Entin Jainingsih', displayName: 'Entin', initials: 'EJ', color: 'fuchsia', nip: '196903111990022001', position: 'Pengadministrasian Perkantoran', team: PUSLAPDIK },
+  { id: 'emp-suyadi', fullName: 'Suyadi', displayName: 'Suyadi', initials: 'SY', color: 'sky', nip: '196907151994031010', position: 'Pengadministrasian Perkantoran', team: PUSLAPDIK },
+  { id: 'emp-drajat', fullName: 'Drajat Sujarwo', displayName: 'Drajat', initials: 'DS', color: 'orange', nip: '198102032007011001', position: 'Pengolah Data dan Informasi', team: PUSLAPDIK },
+  { id: 'emp-sirda', fullName: 'Sirda Eldita', displayName: 'Sirda', initials: 'SE', color: 'blue', nip: '199204152018012002', position: 'Penelaah Teknis Kebijakan', team: PUSLAPDIK },
+  { id: 'emp-linda', fullName: 'Linda Eri Jayanti', displayName: 'Linda', initials: 'LJ', color: 'emerald', nip: '199101032025212048', position: 'Penata Layanan Operasional', team: PUSLAPDIK },
+  { id: 'emp-rendy', fullName: 'Rendy Pamungkas', displayName: 'Rendy', initials: 'RP', color: 'rose', nip: '199105062025211055', position: 'Penata Layanan Operasional', team: PUSLAPDIK },
+  { id: 'emp-nur', fullName: 'Muhammad Nur', displayName: 'Nur', initials: 'MN', color: 'violet', nip: '199503102025211034', position: 'Penata Layanan Operasional', team: PUSLAPDIK },
+  { id: 'emp-rifai', fullName: 'Muhammad Rifai', displayName: 'Rifai', initials: 'MR', color: 'teal', nip: '199608292025211031', position: 'Penata Layanan Operasional', team: PUSLAPDIK },
+  { id: 'emp-lina', fullName: 'Lina Fitriani', displayName: 'Lina', initials: 'LF', color: 'amber', nip: '198602032025212037', position: 'Pengadministrasi Perkantoran', team: PUSLAPDIK },
+  { id: 'emp-mulkirom', fullName: 'Mulkirom', displayName: 'Mulkirom', initials: 'MK', color: 'fuchsia', nip: null, position: '', team: PLPP },
+  { id: 'emp-eka', fullName: 'Eka Dewi Pertiwi', displayName: 'Eka', initials: 'ED', color: 'sky', nip: null, position: '', team: PLPP },
+  { id: 'emp-santika', fullName: 'Santika Indah Pratiwi', displayName: 'Santika', initials: 'SP', color: 'orange', nip: null, position: '', team: PLPP },
+  { id: 'emp-vyja', fullName: 'Vyja Tona Rapolo', displayName: 'Vyja', initials: 'VR', color: 'blue', nip: null, position: '', team: PLPP },
+  { id: 'emp-ulfi', fullName: 'Achmad Ulfi', displayName: 'Ulfi', initials: 'AU', color: 'emerald', nip: null, position: '', team: PLPP },
+  { id: 'emp-dhani', fullName: 'Dhani Prayudi', displayName: 'Dhani', initials: 'DP', color: 'rose', nip: null, position: '', team: PLPP },
+  { id: 'emp-sendi', fullName: 'Sendi Irjansaputra', displayName: 'Sendi', initials: 'SD', color: 'violet', nip: null, position: '', team: PLPP },
+  { id: 'emp-fajar', fullName: 'Fajar Robbyana', displayName: 'Fajar', initials: 'FR', color: 'teal', nip: null, position: '', team: PLPP },
+  { id: 'emp-ferry', fullName: 'Ferry Widiarta', displayName: 'Ferry', initials: 'FW', color: 'amber', nip: null, position: '', team: PLPP },
+  { id: 'emp-kamil', fullName: 'Muhammad Lazuardy Kamil', displayName: 'Kamil', initials: 'MZ', color: 'fuchsia', nip: null, position: '', team: PLPP },
 ];
 
 function buildEmployees(): Employee[] {
@@ -72,6 +96,7 @@ function buildEmployees(): Employee[] {
     displayName: e.displayName,
     initials: e.initials,
     color: e.color,
+    nip: e.nip,
     position: e.position,
     team: e.team,
     sortOrder: i,
@@ -224,8 +249,8 @@ function buildTasks(): Task[] {
       startDate: dateDaysAgo(12),
       dueDate: dateDaysFromNow(0),
       progressMode: 'CHECKLIST',
-      picMainId: 'emp-rina',
-      picIds: ['emp-bambang', 'emp-andi'],
+      picMainId: 'emp-hesti',
+      picIds: ['emp-rakean', 'emp-thoriq'],
       isFocus: true,
       checklist: checklist([
         [
@@ -249,8 +274,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(12),
       updatedAt: hoursAgo(2),
       version: 7,
-      createdByEmployeeId: 'emp-rina',
-      updatedByEmployeeId: 'emp-rina',
+      createdByEmployeeId: 'emp-hesti',
+      updatedByEmployeeId: 'emp-hesti',
     }),
     task({
       id: 'task-rekon-juni',
@@ -266,14 +291,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysAgo(3),
       progressMode: 'MANUAL',
       manualProgress: 65,
-      picMainId: 'emp-hendra',
-      picIds: ['emp-siti'],
+      picMainId: 'emp-drajat',
+      picIds: ['emp-yusna'],
       sortOrder: 0,
       createdAt: daysAgo(14),
       updatedAt: daysAgo(1),
       version: 5,
-      createdByEmployeeId: 'emp-hendra',
-      updatedByEmployeeId: 'emp-hendra',
+      createdByEmployeeId: 'emp-drajat',
+      updatedByEmployeeId: 'emp-drajat',
     }),
     task({
       id: 'task-aktivasi-sma',
@@ -287,7 +312,7 @@ function buildTasks(): Task[] {
       startDate: dateDaysAgo(9),
       dueDate: dateDaysFromNow(6),
       progressMode: 'CHECKLIST',
-      picMainId: 'emp-dewi',
+      picMainId: 'emp-erna',
       picIds: [],
       checklist: checklist([
         [
@@ -304,8 +329,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(9),
       updatedAt: hoursAgo(5),
       version: 4,
-      createdByEmployeeId: 'emp-dewi',
-      updatedByEmployeeId: 'emp-dewi',
+      createdByEmployeeId: 'emp-erna',
+      updatedByEmployeeId: 'emp-erna',
     }),
     task({
       id: 'task-bahan-pimpinan',
@@ -320,15 +345,15 @@ function buildTasks(): Task[] {
       dueDate: dateDaysFromNow(1),
       progressMode: 'MANUAL',
       manualProgress: 20,
-      picMainId: 'emp-maya',
-      picIds: ['emp-yusuf'],
+      picMainId: 'emp-sirda',
+      picIds: ['emp-sendi'],
       isFocus: true,
       sortOrder: 0,
       createdAt: daysAgo(1),
       updatedAt: hoursAgo(1),
       version: 3,
-      createdByEmployeeId: 'emp-maya',
-      updatedByEmployeeId: 'emp-maya',
+      createdByEmployeeId: 'emp-sirda',
+      updatedByEmployeeId: 'emp-sirda',
     }),
     task({
       id: 'task-dashboard-internal',
@@ -343,13 +368,13 @@ function buildTasks(): Task[] {
       progressMode: 'MANUAL',
       manualProgress: 80,
       picMainId: 'emp-fajar',
-      picIds: ['emp-yusuf'],
+      picIds: ['emp-sendi'],
       sortOrder: 2,
       createdAt: daysAgo(20),
       updatedAt: hoursAgo(0.5),
       version: 11,
       createdByEmployeeId: 'emp-fajar',
-      updatedByEmployeeId: 'emp-yusuf',
+      updatedByEmployeeId: 'emp-sendi',
     }),
     task({
       id: 'task-verifikasi-susulan',
@@ -368,8 +393,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(3),
       updatedAt: daysAgo(3),
       version: 1,
-      createdByEmployeeId: 'emp-dewi',
-      updatedByEmployeeId: 'emp-dewi',
+      createdByEmployeeId: 'emp-erna',
+      updatedByEmployeeId: 'emp-erna',
     }),
     task({
       id: 'task-data-dpr',
@@ -383,14 +408,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysFromNow(0),
       progressMode: 'MANUAL',
       manualProgress: 0,
-      picMainId: 'emp-rina',
+      picMainId: 'emp-hesti',
       picIds: [],
       sortOrder: 0,
       createdAt: hoursAgo(6),
       updatedAt: hoursAgo(6),
       version: 1,
-      createdByEmployeeId: 'emp-rina',
-      updatedByEmployeeId: 'emp-rina',
+      createdByEmployeeId: 'emp-hesti',
+      updatedByEmployeeId: 'emp-hesti',
     }),
     task({
       id: 'task-juknis',
@@ -404,14 +429,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysFromNow(20),
       progressMode: 'MANUAL',
       manualProgress: 10,
-      picMainId: 'emp-andi',
+      picMainId: 'emp-thoriq',
       picIds: [],
       sortOrder: 1,
       createdAt: daysAgo(25),
       updatedAt: daysAgo(12),
       version: 2,
-      createdByEmployeeId: 'emp-andi',
-      updatedByEmployeeId: 'emp-andi',
+      createdByEmployeeId: 'emp-thoriq',
+      updatedByEmployeeId: 'emp-thoriq',
     }),
     task({
       id: 'task-rapat-bank',
@@ -425,8 +450,8 @@ function buildTasks(): Task[] {
       startDate: dateDaysAgo(4),
       dueDate: dateDaysAgo(2),
       progressMode: 'CHECKLIST',
-      picMainId: 'emp-hendra',
-      picIds: ['emp-dewi', 'emp-siti'],
+      picMainId: 'emp-drajat',
+      picIds: ['emp-erna', 'emp-yusna'],
       checklist: checklist([
         [
           'Pelaksanaan',
@@ -442,8 +467,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(6),
       updatedAt: daysAgo(2),
       version: 6,
-      createdByEmployeeId: 'emp-hendra',
-      updatedByEmployeeId: 'emp-hendra',
+      createdByEmployeeId: 'emp-drajat',
+      updatedByEmployeeId: 'emp-drajat',
     }),
     task({
       id: 'task-surat-jabar',
@@ -457,14 +482,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysAgo(5),
       progressMode: 'MANUAL',
       manualProgress: 100,
-      picMainId: 'emp-maya',
+      picMainId: 'emp-sirda',
       picIds: [],
       sortOrder: 1,
       createdAt: daysAgo(8),
       updatedAt: daysAgo(5),
       version: 3,
-      createdByEmployeeId: 'emp-maya',
-      updatedByEmployeeId: 'emp-maya',
+      createdByEmployeeId: 'emp-sirda',
+      updatedByEmployeeId: 'emp-sirda',
     }),
     task({
       id: 'task-pemutakhiran',
@@ -478,8 +503,8 @@ function buildTasks(): Task[] {
       startDate: dateDaysAgo(15),
       dueDate: dateDaysFromNow(10),
       progressMode: 'CHECKLIST',
-      picMainId: 'emp-andi',
-      picIds: ['emp-yusuf'],
+      picMainId: 'emp-thoriq',
+      picIds: ['emp-sendi'],
       checklist: checklist([
         [
           'Sinkronisasi',
@@ -497,8 +522,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(15),
       updatedAt: daysAgo(1),
       version: 8,
-      createdByEmployeeId: 'emp-andi',
-      updatedByEmployeeId: 'emp-andi',
+      createdByEmployeeId: 'emp-thoriq',
+      updatedByEmployeeId: 'emp-thoriq',
     }),
     task({
       id: 'task-pengaduan',
@@ -512,14 +537,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysFromNow(2),
       progressMode: 'MANUAL',
       manualProgress: 0,
-      picMainId: 'emp-maya',
+      picMainId: 'emp-sirda',
       picIds: [],
       sortOrder: 2,
       createdAt: daysAgo(2),
       updatedAt: daysAgo(2),
       version: 1,
-      createdByEmployeeId: 'emp-maya',
-      updatedByEmployeeId: 'emp-maya',
+      createdByEmployeeId: 'emp-sirda',
+      updatedByEmployeeId: 'emp-sirda',
     }),
     task({
       id: 'task-evaluasi-sem1',
@@ -534,14 +559,14 @@ function buildTasks(): Task[] {
       dueDate: dateDaysFromNow(8),
       progressMode: 'MANUAL',
       manualProgress: 35,
-      picMainId: 'emp-bambang',
-      picIds: ['emp-rina', 'emp-hendra'],
+      picMainId: 'emp-rakean',
+      picIds: ['emp-hesti', 'emp-drajat'],
       sortOrder: 1,
       createdAt: daysAgo(7),
       updatedAt: hoursAgo(26),
       version: 4,
-      createdByEmployeeId: 'emp-bambang',
-      updatedByEmployeeId: 'emp-rina',
+      createdByEmployeeId: 'emp-rakean',
+      updatedByEmployeeId: 'emp-hesti',
     }),
     task({
       id: 'task-arsip-termin1',
@@ -556,15 +581,15 @@ function buildTasks(): Task[] {
       dueDate: dateDaysAgo(40),
       progressMode: 'MANUAL',
       manualProgress: 100,
-      picMainId: 'emp-dewi',
-      picIds: ['emp-hendra', 'emp-siti'],
+      picMainId: 'emp-erna',
+      picIds: ['emp-drajat', 'emp-yusna'],
       archivedAt: daysAgo(30),
       sortOrder: 2,
       createdAt: daysAgo(150),
       updatedAt: daysAgo(30),
       version: 21,
-      createdByEmployeeId: 'emp-dewi',
-      updatedByEmployeeId: 'emp-dewi',
+      createdByEmployeeId: 'emp-erna',
+      updatedByEmployeeId: 'emp-erna',
     }),
     task({
       id: 'task-arsip-sosialisasi',
@@ -579,15 +604,15 @@ function buildTasks(): Task[] {
       dueDate: dateDaysAgo(60),
       progressMode: 'MANUAL',
       manualProgress: 100,
-      picMainId: 'emp-maya',
-      picIds: ['emp-rina'],
+      picMainId: 'emp-sirda',
+      picIds: ['emp-hesti'],
       archivedAt: daysAgo(45),
       sortOrder: 3,
       createdAt: daysAgo(120),
       updatedAt: daysAgo(45),
       version: 9,
-      createdByEmployeeId: 'emp-maya',
-      updatedByEmployeeId: 'emp-maya',
+      createdByEmployeeId: 'emp-sirda',
+      updatedByEmployeeId: 'emp-sirda',
     }),
     task({
       id: 'task-terhapus-demo',
@@ -600,7 +625,7 @@ function buildTasks(): Task[] {
       priority: 'RENDAH',
       progressMode: 'MANUAL',
       manualProgress: 0,
-      picMainId: 'emp-yusuf',
+      picMainId: 'emp-sendi',
       picIds: [],
       deletedAt: daysAgo(10),
       deleteReason: 'Duplikat dengan pekerjaan pemutakhiran data',
@@ -608,8 +633,8 @@ function buildTasks(): Task[] {
       createdAt: daysAgo(40),
       updatedAt: daysAgo(10),
       version: 2,
-      createdByEmployeeId: 'emp-yusuf',
-      updatedByEmployeeId: 'emp-yusuf',
+      createdByEmployeeId: 'emp-sendi',
+      updatedByEmployeeId: 'emp-sendi',
     }),
   ];
 }
@@ -625,7 +650,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-sk-termin2',
       type: 'KOMENTAR',
       text: 'Lampiran penerima sudah final, menunggu jadwal paraf biro hukum.',
-      employeeId: 'emp-rina',
+      employeeId: 'emp-hesti',
       createdAt: hoursAgo(26),
     },
     {
@@ -633,7 +658,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-sk-termin2',
       type: 'KENDALA',
       text: 'Slot paraf biro hukum penuh sampai Kamis; berisiko menggeser penomoran SK.',
-      employeeId: 'emp-rina',
+      employeeId: 'emp-hesti',
       createdAt: hoursAgo(8),
     },
     {
@@ -641,7 +666,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-sk-termin2',
       type: 'TINDAK_LANJUT',
       text: 'Ketua tim mengirim nota dinas percepatan ke biro hukum hari ini.',
-      employeeId: 'emp-bambang',
+      employeeId: 'emp-rakean',
       createdAt: hoursAgo(2),
     },
     {
@@ -649,7 +674,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-rekon-juni',
       type: 'KENDALA',
       text: 'Bank belum mengirim rekening koran final; selisih 0,4% belum bisa dijelaskan.',
-      employeeId: 'emp-hendra',
+      employeeId: 'emp-drajat',
       createdAt: daysAgo(1),
     },
     {
@@ -657,7 +682,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-evaluasi-sem1',
       type: 'TINDAK_LANJUT',
       text: 'Sudah diminta data final ke bank melalui surat resmi minggu lalu.',
-      employeeId: 'emp-rina',
+      employeeId: 'emp-hesti',
       createdAt: daysAgo(4),
     },
     {
@@ -665,7 +690,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-evaluasi-sem1',
       type: 'KENDALA',
       text: 'Data final bank penyalur belum masuk; analisis tren belum bisa ditutup.',
-      employeeId: 'emp-hendra',
+      employeeId: 'emp-drajat',
       createdAt: hoursAgo(26),
     },
     {
@@ -673,7 +698,7 @@ function buildComments(): TaskComment[] {
       taskId: 'task-aktivasi-sma',
       type: 'KOMENTAR',
       text: 'Aktivasi minggu ini mencapai 68% dari target wilayah timur.',
-      employeeId: 'emp-dewi',
+      employeeId: 'emp-erna',
       createdAt: hoursAgo(5),
     },
   ];
@@ -853,7 +878,7 @@ function buildSnapshots(): DistributionSnapshot[] {
     sourceFileName: s.sourceFileName ?? null,
     note: s.note ?? null,
     createdAt: daysAgo(s.createdDaysAgo),
-    createdByEmployeeId: 'emp-putri',
+    createdByEmployeeId: 'emp-sucianingsih',
     activatedAt: s.activatedDaysAgo === null ? null : daysAgo(s.activatedDaysAgo),
     updatedAt: daysAgo(s.activatedDaysAgo ?? s.createdDaysAgo),
     version: 1,
@@ -984,20 +1009,20 @@ function buildAudit(): AuditEntry[] {
   });
 
   return [
-    mk(hoursAgo(0.5), 'emp-yusuf', 'UPDATE', 'TASK', 'task-dashboard-internal', 'Pembaruan dashboard monitoring internal', { progress: 70 }, { progress: 80 }),
-    mk(hoursAgo(1), 'emp-maya', 'UPDATE', 'TASK', 'task-bahan-pimpinan', 'Bahan paparan pimpinan: evaluasi penyaluran Juli', { progress: 0 }, { progress: 20 }),
-    mk(hoursAgo(2), 'emp-bambang', 'UPDATE', 'TASK', 'task-sk-termin2', 'Finalisasi SK Pemberian PIP Termin 2', { checklist: '5/6' }, { checklist: '4/6' }),
+    mk(hoursAgo(0.5), 'emp-sendi', 'UPDATE', 'TASK', 'task-dashboard-internal', 'Pembaruan dashboard monitoring internal', { progress: 70 }, { progress: 80 }),
+    mk(hoursAgo(1), 'emp-sirda', 'UPDATE', 'TASK', 'task-bahan-pimpinan', 'Bahan paparan pimpinan: evaluasi penyaluran Juli', { progress: 0 }, { progress: 20 }),
+    mk(hoursAgo(2), 'emp-rakean', 'UPDATE', 'TASK', 'task-sk-termin2', 'Finalisasi SK Pemberian PIP Termin 2', { checklist: '5/6' }, { checklist: '4/6' }),
     {
-      ...mk(hoursAgo(5), 'emp-putri', 'ACTIVATE', 'SNAPSHOT', 'snap-2026t1-jul', 'Penyaluran 2026 · Termin 1', { status: 'DRAFT' }, { status: 'ACTIVE' }),
+      ...mk(hoursAgo(5), 'emp-sucianingsih', 'ACTIVATE', 'SNAPSHOT', 'snap-2026t1-jul', 'Penyaluran 2026 · Termin 1', { status: 'DRAFT' }, { status: 'ACTIVE' }),
       actorRole: 'ADMIN',
       actorAccount: 'admin',
     },
-    mk(hoursAgo(6), 'emp-rina', 'CREATE', 'TASK', 'task-data-dpr', 'Permintaan data penyaluran dari Komisi X DPR RI', null, { stepId: 'step-willdo' }),
-    mk(hoursAgo(26), 'emp-rina', 'MOVE', 'TASK', 'task-evaluasi-sem1', 'Evaluasi capaian penyaluran semester 1', { step: 'On Progress' }, { step: 'Blocking' }),
-    mk(daysAgo(1), 'emp-hendra', 'UPDATE', 'TASK', 'task-rekon-juni', 'Rekonsiliasi penyaluran bank penyalur bulan Juni', { progress: 50 }, { progress: 65 }),
-    mk(daysAgo(2), 'emp-hendra', 'MOVE', 'TASK', 'task-rapat-bank', 'Rapat koordinasi teknis dengan bank penyalur', { step: 'On Progress' }, { step: 'Done' }),
-    mk(daysAgo(2), 'emp-maya', 'UPDATE', 'TASK', 'task-pengaduan', 'Monitoring pengaduan layanan PIP minggu ke-29', null, { pic: 'Maya' }),
-    mk(daysAgo(3), 'emp-dewi', 'CREATE', 'TASK', 'task-verifikasi-susulan', 'Verifikasi usulan penerima tahap susulan', null, { stepId: 'step-todo' }),
+    mk(hoursAgo(6), 'emp-hesti', 'CREATE', 'TASK', 'task-data-dpr', 'Permintaan data penyaluran dari Komisi X DPR RI', null, { stepId: 'step-willdo' }),
+    mk(hoursAgo(26), 'emp-hesti', 'MOVE', 'TASK', 'task-evaluasi-sem1', 'Evaluasi capaian penyaluran semester 1', { step: 'On Progress' }, { step: 'Blocking' }),
+    mk(daysAgo(1), 'emp-drajat', 'UPDATE', 'TASK', 'task-rekon-juni', 'Rekonsiliasi penyaluran bank penyalur bulan Juni', { progress: 50 }, { progress: 65 }),
+    mk(daysAgo(2), 'emp-drajat', 'MOVE', 'TASK', 'task-rapat-bank', 'Rapat koordinasi teknis dengan bank penyalur', { step: 'On Progress' }, { step: 'Done' }),
+    mk(daysAgo(2), 'emp-sirda', 'UPDATE', 'TASK', 'task-pengaduan', 'Monitoring pengaduan layanan PIP minggu ke-29', null, { pic: 'Maya' }),
+    mk(daysAgo(3), 'emp-erna', 'CREATE', 'TASK', 'task-verifikasi-susulan', 'Verifikasi usulan penerima tahap susulan', null, { stepId: 'step-todo' }),
   ];
 }
 
@@ -1018,6 +1043,224 @@ const buildSettings = (): AppSettings => ({
 });
 
 // ---------------------------------------------------------------------------
+// Sumber spreadsheet (metadata seed 2026 — Docs/09 §R, §S, §V)
+// ---------------------------------------------------------------------------
+
+export const PIP_SPREADSHEET_ID = '11IgR3kwN3xiSuArIKgPmC98AcdotR0k_iWOMPJjNVY8';
+export const PLAN_SPREADSHEET_ID = '16U0Zv9lHXr41S1oiXdf1m0xt2K1bZiN6neLz5lCbO98';
+
+function buildSources(): SpreadsheetSource[] {
+  const base = {
+    isActive: true,
+    isPrimary: true,
+    syncMode: 'WEBHOOK_DAN_INTERVAL' as const,
+    lastSyncedAt: hoursAgo(1),
+    lastSyncStatus: 'BERHASIL' as const,
+    lastError: null,
+    createdByEmployeeId: 'emp-rakean',
+    updatedByEmployeeId: 'emp-rakean',
+    createdAt: daysAgo(30),
+    updatedAt: hoursAgo(1),
+    deletedAt: null,
+  };
+  return [
+    {
+      id: 'src-pip-2026',
+      sourceType: 'pip_progress',
+      year: 2026,
+      name: 'Progres Penyaluran SK 2026',
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${PIP_SPREADSHEET_ID}/edit`,
+      spreadsheetId: PIP_SPREADSHEET_ID,
+      ...base,
+    },
+    {
+      id: 'src-plan-2026',
+      sourceType: 'activity_plan',
+      year: 2026,
+      name: 'Rencana Kegiatan 2026',
+      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${PLAN_SPREADSHEET_ID}/edit`,
+      spreadsheetId: PLAN_SPREADSHEET_ID,
+      ...base,
+    },
+  ];
+}
+
+function buildBindings(): SheetBinding[] {
+  return [
+    {
+      id: 'bind-pip-detail',
+      sourceId: 'src-pip-2026',
+      bindingType: 'detail_realisasi',
+      sheetName: 'Pemberian',
+      headerRow: 1,
+      dataStartRow: 2,
+      optionalRange: null,
+      mappingStatus: 'TERKONFIRMASI',
+    },
+    {
+      id: 'bind-pip-rekap',
+      sourceId: 'src-pip-2026',
+      bindingType: 'allocation_summary',
+      sheetName: 'REKAP PROGRESS',
+      headerRow: 1,
+      dataStartRow: 2,
+      optionalRange: null,
+      mappingStatus: 'TERKONFIRMASI',
+    },
+    {
+      id: 'bind-plan-rows',
+      sourceId: 'src-plan-2026',
+      bindingType: 'activity_rows',
+      sheetName: 'Sheet1',
+      headerRow: 1,
+      dataStartRow: 2,
+      optionalRange: null,
+      mappingStatus: 'TERKONFIRMASI',
+    },
+  ];
+}
+
+function buildColumnMappings(): ColumnMapping[] {
+  const mk = (
+    bindingId: string,
+    detectedHeader: string,
+    targetField: string,
+    parserType: ColumnMapping['parserType'],
+    required = false,
+  ): ColumnMapping => ({
+    id: `map-${bindingId}-${targetField}`,
+    bindingId,
+    detectedHeader,
+    targetField,
+    parserType,
+    transformRule: null,
+    required,
+    validationStatus: 'VALID',
+  });
+  return [
+    mk('bind-pip-detail', 'Jenjang', 'jenjang', 'text', true),
+    mk('bind-pip-detail', 'Tahap', 'tahap', 'text'),
+    mk('bind-pip-detail', 'Nomor SK', 'nomor_sk', 'text'),
+    mk('bind-pip-detail', 'Tanggal SK', 'tanggal_sk', 'date'),
+    mk('bind-pip-detail', 'Jumlah Siswa', 'jumlah_siswa', 'number', true),
+    mk('bind-pip-detail', 'Jumlah Dana', 'jumlah_dana', 'currency', true),
+    mk('bind-pip-rekap', 'Jenjang', 'jenjang', 'text', true),
+    mk('bind-pip-rekap', 'Alokasi Siswa', 'alokasi_siswa', 'number', true),
+    mk('bind-pip-rekap', 'Pagu', 'alokasi_anggaran', 'currency', true),
+    mk('bind-pip-rekap', 'Realisasi Siswa', 'realisasi_siswa', 'number', true),
+    mk('bind-pip-rekap', 'Realisasi Dana', 'realisasi_dana', 'currency', true),
+    mk('bind-plan-rows', 'Kegiatan', 'title', 'text', true),
+    mk('bind-plan-rows', 'Tanggal Mulai', 'start_date', 'date', true),
+    mk('bind-plan-rows', 'Tanggal Selesai', 'end_date', 'date'),
+    mk('bind-plan-rows', 'PIC', 'pic', 'text'),
+    mk('bind-plan-rows', 'Lokasi', 'location', 'text'),
+    mk('bind-plan-rows', 'Status', 'status', 'text'),
+  ];
+}
+
+function buildSyncRuns(): SyncRun[] {
+  const mk = (
+    id: string,
+    sourceId: string,
+    hAgo: number,
+    trigger: SyncRun['trigger'],
+    status: SyncRun['status'],
+    rowsRead: number,
+    message: string | null = null,
+  ): SyncRun => ({
+    id,
+    sourceId,
+    trigger,
+    status,
+    startedAt: hoursAgo(hAgo),
+    finishedAt: hoursAgo(hAgo - 0.01),
+    rowsRead,
+    rowsUpserted: rowsRead,
+    message,
+    errorMessage: status === 'GAGAL' ? (message ?? 'Kesalahan tidak diketahui') : null,
+  });
+  return [
+    mk('run-pip-1', 'src-pip-2026', 1, 'WEBHOOK', 'BERHASIL', 42, 'Perubahan sheet Pemberian'),
+    mk('run-plan-1', 'src-plan-2026', 1, 'WEBHOOK', 'BERHASIL', 28, 'Perubahan Sheet1'),
+    mk('run-pip-2', 'src-pip-2026', 26, 'MANUAL', 'BERHASIL', 42, 'Sinkronisasi manual Admin'),
+    mk('run-pip-3', 'src-pip-2026', 50, 'JADWAL', 'BERHASIL', 41, 'Rekonsiliasi terjadwal'),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Rencana Kegiatan (contoh lokal — produksi membaca hasil sinkronisasi sheet)
+// ---------------------------------------------------------------------------
+
+interface ActivitySpec {
+  id: string;
+  title: string;
+  /** Hari relatif dari hari ini (negatif = lampau). */
+  startIn: number;
+  days?: number;
+  startTime?: string;
+  endTime?: string;
+  location?: string;
+  category?: string;
+  picIds?: string[];
+  picExtra?: string[];
+  participants?: string;
+  status: ActivityPlanItem['status'];
+  notes?: string;
+  meetingLink?: string;
+}
+
+const ACTIVITIES: ActivitySpec[] = [
+  { id: 'act-rakor-bank', title: 'Rapat koordinasi bank penyalur Termin 2', startIn: 0, startTime: '09:00', endTime: '12:00', location: 'Ruang Rapat Lantai 3, Puslapdik', category: 'Rapat', picIds: ['emp-rakean', 'emp-drajat'], participants: 'Tim PIP, Bank Penyalur', status: 'BERLANGSUNG', notes: 'Agenda: percepatan aktivasi rekening.' },
+  { id: 'act-monev-jabar', title: 'Monitoring & evaluasi penyaluran Jawa Barat', startIn: 1, days: 3, location: 'Bandung', category: 'Perjalanan Dinas', picIds: ['emp-hesti', 'emp-erna'], status: 'TERJADWAL' },
+  { id: 'act-webinar-juknis', title: 'Webinar sosialisasi juknis PIP untuk dinas pendidikan', startIn: 3, startTime: '13:00', endTime: '15:30', location: 'Zoom', category: 'Sosialisasi', picIds: ['emp-sirda'], picExtra: ['Narasumber Ditjen'], participants: '38 dinas provinsi', status: 'TERJADWAL', meetingLink: 'https://zoom.us/j/000000000' },
+  { id: 'act-rekon-juli', title: 'Rekonsiliasi data penyaluran bulan Juli', startIn: 6, days: 2, location: 'Puslapdik', category: 'Rekonsiliasi', picIds: ['emp-drajat', 'emp-yusna'], status: 'RENCANA' },
+  { id: 'act-paparan-pimpinan', title: 'Paparan capaian penyaluran kepada pimpinan', startIn: 8, startTime: '10:00', endTime: '11:30', location: 'Ruang Kerja Kapus', category: 'Rapat', picIds: ['emp-rakean'], status: 'RENCANA' },
+  { id: 'act-bimtek-plpp', title: 'Bimbingan teknis pengelolaan data PIP', startIn: 14, days: 3, location: 'Bogor', category: 'Bimtek', picIds: ['emp-thoriq', 'emp-sendi', 'emp-kamil'], status: 'RENCANA' },
+  { id: 'act-fgd-kebijakan', title: 'FGD penyempurnaan kebijakan penyaluran 2027', startIn: 21, startTime: '09:00', endTime: '16:00', location: 'Jakarta', category: 'FGD', picIds: ['emp-hesti', 'emp-sucianingsih'], status: 'RENCANA' },
+  { id: 'act-rapat-internal', title: 'Rapat internal mingguan Tim Kemitraan', startIn: -2, startTime: '08:30', endTime: '10:00', location: 'Ruang Rapat Lantai 3', category: 'Rapat', picIds: ['emp-rakean'], status: 'SELESAI' },
+  { id: 'act-verifikasi-susulan', title: 'Verifikasi usulan penerima tahap susulan', startIn: -5, days: 2, location: 'Puslapdik', category: 'Verifikasi', picIds: ['emp-erna', 'emp-linda'], status: 'SELESAI' },
+  { id: 'act-kunjungan-dpr', title: 'Pendampingan kunjungan kerja Komisi X DPR RI', startIn: 10, days: 2, location: 'Yogyakarta', category: 'Perjalanan Dinas', picIds: ['emp-rakean', 'emp-hesti'], status: 'DITUNDA', notes: 'Menunggu jadwal ulang dari Setkomisi.' },
+  { id: 'act-pelatihan-arsip', title: 'Pelatihan pengelolaan arsip digital', startIn: 17, startTime: '09:00', endTime: '12:00', location: 'Ruang Pelatihan', category: 'Pelatihan', picIds: ['emp-entin', 'emp-lina'], status: 'DIBATALKAN', notes: 'Digabung dengan agenda biro umum.' },
+  { id: 'act-rekap-semester', title: 'Penyusunan rekap capaian semester 1', startIn: 27, days: 4, location: 'Puslapdik', category: 'Pelaporan', picIds: ['emp-yusna', 'emp-suyadi'], status: 'RENCANA' },
+];
+
+function buildActivities(): ActivityPlanItem[] {
+  const empById = new Map(EMPLOYEES.map((e) => [e.id, e]));
+  return ACTIVITIES.map((a, i) => {
+    const startDate = dateDaysFromNow(a.startIn);
+    const endDate = dateDaysFromNow(a.startIn + (a.days ? a.days - 1 : 0));
+    const picEmployeeIds = a.picIds ?? [];
+    const picNames = [
+      ...picEmployeeIds.map((id) => empById.get(id)?.displayName ?? id),
+      ...(a.picExtra ?? []),
+    ];
+    return {
+      id: a.id,
+      sourceId: 'src-plan-2026',
+      year: 2026,
+      title: a.title,
+      startDate,
+      endDate,
+      startTime: a.startTime ?? null,
+      endTime: a.endTime ?? null,
+      allDay: !a.startTime,
+      location: a.location ?? '',
+      category: a.category ?? '',
+      picNames,
+      picEmployeeIds,
+      participants: a.participants ?? '',
+      status: a.status,
+      notes: a.notes ?? '',
+      meetingLink: a.meetingLink ?? null,
+      documentLink: null,
+      sourceRowKey: `sheet1:${i + 2}`,
+      createdAt: daysAgo(20),
+      updatedAt: hoursAgo(1),
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // API seed
 // ---------------------------------------------------------------------------
 
@@ -1033,6 +1276,11 @@ export interface SeedData {
   snapshots: DistributionSnapshot[];
   settings: AppSettings;
   audit: AuditEntry[];
+  sources: SpreadsheetSource[];
+  bindings: SheetBinding[];
+  columnMappings: ColumnMapping[];
+  syncRuns: SyncRun[];
+  activities: ActivityPlanItem[];
 }
 
 export function buildSeedData(): SeedData {
@@ -1048,5 +1296,10 @@ export function buildSeedData(): SeedData {
     snapshots: buildSnapshots(),
     settings: buildSettings(),
     audit: buildAudit(),
+    sources: buildSources(),
+    bindings: buildBindings(),
+    columnMappings: buildColumnMappings(),
+    syncRuns: buildSyncRuns(),
+    activities: buildActivities(),
   };
 }

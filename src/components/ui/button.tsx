@@ -7,7 +7,7 @@ export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon';
 
 const VARIANT: Record<ButtonVariant, string> = {
   primary:
-    'bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:bg-brand-800 disabled:bg-brand-300',
+    'bg-(image:--gradient-brand) bg-brand-600 text-white shadow-sm hover:brightness-110 hover:shadow-(--shadow-lift) active:brightness-95 disabled:bg-none disabled:bg-brand-300',
   secondary:
     'bg-brand-50 text-brand-800 hover:bg-brand-100 active:bg-brand-200 disabled:text-brand-300 disabled:bg-brand-50',
   outline:
@@ -40,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={props.type ?? 'button'}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex shrink-0 cursor-pointer items-center justify-center font-semibold transition-colors select-none disabled:cursor-not-allowed',
+        'pressable inline-flex shrink-0 cursor-pointer items-center justify-center font-semibold select-none disabled:cursor-not-allowed',
         VARIANT[variant],
         SIZE[size],
         className,

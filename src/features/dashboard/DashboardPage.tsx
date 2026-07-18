@@ -16,6 +16,7 @@ import {
   useEmployees,
   useRecentActivity,
   useSnapshots,
+  useSources,
   useSteps,
   useTasks,
 } from '@/hooks/queries';
@@ -72,9 +73,23 @@ export default function DashboardPage() {
   const activityQ = useRecentActivity(12);
   const employeesQ = useEmployees(true);
 
+  const sourcesQ = useSources();
+
   const snapshot = snapshotQ.data ?? null;
   const settings = settingsQ.data;
   const employees = employeesQ.data ?? [];
+
+  /** Sumber spreadsheet penyaluran aktif untuk tahun terpilih (utama lebih dulu). */
+  const pipSource = useMemo(() => {
+    const candidates = (sourcesQ.data ?? []).filter(
+      (s) => s.sourceType === 'pip_progress' && s.isActive && !s.deletedAt,
+    );
+    const scoped = year ? candidates.filter((s) => s.year === year) : candidates;
+    return (
+      scoped.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || b.year - a.year)[0] ??
+      null
+    );
+  }, [sourcesQ.data, year]);
 
   const years = useMemo(() => {
     const set = new Set<number>();
@@ -172,6 +187,39 @@ export default function DashboardPage() {
                 </span>
               </p>
             )}
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-500">
+              {pipSource ? (
+                <>
+                  <span>
+                    Sumber: <span className="font-semibold text-slate-700">{pipSource.name}</span>
+                  </span>
+                  <span>
+                    · sinkron{' '}
+                    {pipSource.lastSyncedAt ? formatRelative(pipSource.lastSyncedAt) : 'belum pernah'}
+                  </span>
+                  <span
+                    className={
+                      pipSource.lastSyncStatus === 'BERHASIL'
+                        ? 'font-semibold text-success-600'
+                        : pipSource.lastSyncStatus === 'BELUM_SINKRON'
+                          ? 'font-semibold text-slate-400'
+                          : 'font-semibold text-warning-600'
+                    }
+                  >
+                    ·{' '}
+                    {pipSource.lastSyncStatus === 'BERHASIL'
+                      ? 'Sinkron berhasil'
+                      : pipSource.lastSyncStatus === 'PERLU_VALIDASI'
+                        ? 'Perlu Validasi'
+                        : pipSource.lastSyncStatus === 'GAGAL'
+                          ? 'Sinkron gagal — menampilkan snapshot valid terakhir'
+                          : 'Belum sinkron'}
+                  </span>
+                </>
+              ) : (
+                <span>Sumber spreadsheet belum dikonfigurasi — data dari snapshot terakhir.</span>
+              )}
+            </p>
           </div>
           {/* Filter: tahun, periode, jenjang */}
           <div className="flex flex-wrap items-end gap-2" role="group" aria-label="Filter penyaluran">
@@ -226,8 +274,12 @@ export default function DashboardPage() {
           <Card>
             <EmptyState
               icon={Database}
-              title="Belum ada data penyaluran"
-              description="Belum ada snapshot aktif untuk periode ini. Admin dapat mengunggah dan mengaktifkan data pada menu Admin → Data Penyaluran."
+              title={pipSource ? 'Belum ada data penyaluran' : 'Integrasi data belum dikonfigurasi'}
+              description={
+                pipSource
+                  ? 'Belum ada snapshot aktif untuk periode ini. Jalankan sinkronisasi pada Admin › Integrasi Spreadsheet, atau aktifkan snapshot manual.'
+                  : 'Hubungkan akun Google dan sumber spreadsheet pada Admin › Integrasi Spreadsheet. Aplikasi tetap berjalan tanpa data.'
+              }
             />
           </Card>
         ) : (

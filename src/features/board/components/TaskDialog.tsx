@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { notify } from '@/components/feedback/toaster';
@@ -134,12 +134,30 @@ export function TaskDialog({
   const onError = useBoardErrorHandler();
   const queryClient = useQueryClient();
 
+  // Reset form HANYA saat dialog dibuka atau target (task) berganti — bukan saat
+  // data `steps` selesai dimuat async (mode Supabase). Tanpa penjagaan ini,
+  // perubahan `firstStepId` setelah data tiba akan me-reset form & menghapus
+  // judul yang sedang diketik pengguna.
+  const initKey = task ? `edit:${task.id}` : 'new';
+  const initedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (open) {
-      setForm(task ? formFromTask(task) : emptyForm(initialStepId ?? firstStepId));
-      setErrors({});
+    if (!open) {
+      initedRef.current = null;
+      return;
     }
-  }, [open, task, initialStepId, firstStepId]);
+    if (initedRef.current === initKey) return;
+    initedRef.current = initKey;
+    setForm(task ? formFromTask(task) : emptyForm(initialStepId ?? firstStepId));
+    setErrors({});
+  }, [open, initKey, task, initialStepId, firstStepId]);
+
+  // Buat baru: bila step default belum termuat saat dialog dibuka (data async),
+  // isi stepId begitu steps tersedia — tanpa menimpa pilihan/isian pengguna.
+  useEffect(() => {
+    if (open && !isEdit && !initialStepId && firstStepId) {
+      setForm((f) => (f.stepId ? f : { ...f, stepId: firstStepId }));
+    }
+  }, [open, isEdit, initialStepId, firstStepId]);
 
   const activeEmployees = useMemo(() => employees.filter((e) => e.active), [employees]);
 

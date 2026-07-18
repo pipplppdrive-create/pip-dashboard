@@ -58,7 +58,14 @@ test.describe('dashboard', () => {
     await expect(page.getByText('Fokus Hari Ini')).toBeVisible();
     await expect(page.getByText('Ditandai fokus').first()).toBeVisible();
     await expect(page.getByText('Aktivitas Terbaru')).toBeVisible();
-    await expect(page.getByText('memperbarui data penyaluran').first()).toBeVisible();
+    // Feed aktivitas kini terisi untuk USER (migrasi 0005 membuka baca audit
+    // terbatas). Verba bisa dari pembaruan penyaluran (seed) atau aktivitas
+    // pekerjaan uji; pastikan feed terisi (bukan empty state).
+    await expect(
+      page
+        .getByText(/memperbarui data penyaluran|membuat|memindahkan|memperbarui|menyelesaikan/)
+        .first(),
+    ).toBeVisible();
   });
 
   test('tidak ada data individual siswa', async ({ page }) => {

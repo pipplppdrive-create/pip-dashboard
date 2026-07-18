@@ -15,8 +15,14 @@ import { supabaseAdapter } from './supabase/adapter';
 export type DataMode = 'local' | 'supabase';
 
 export function getDataMode(): DataMode {
-  const raw = (import.meta.env.VITE_DATA_MODE ?? 'local').toLowerCase();
-  return raw === 'supabase' ? 'supabase' : 'local';
+  const raw = (
+    import.meta.env.VITE_DATA_MODE ??
+    import.meta.env.NEXT_PUBLIC_DATA_MODE ??
+    ''
+  ).toLowerCase();
+  if (raw === 'supabase') return 'supabase';
+  if (raw === 'local') return 'local';
+  return isSupabaseConfigured() ? 'supabase' : 'local';
 }
 
 let instance: DataService | null = null;

@@ -36,29 +36,40 @@ import type {
   TaskPatch,
 } from '@/services/types';
 import { toActivityEvent } from '@/services/local/audit.service';
-import { authEmailDomain, getSupabase, userAccountEmail } from './client';
+import { authEmailDomain, getSupabase } from './client';
 import {
+  toActivity,
   toAttachment,
   toAudit,
+  toBinding,
   toBoard,
   toComment,
   toEmployee,
+  toMapping,
   toSession,
   toSettings,
   toSnapshot,
+  toSource,
   toStep,
+  toSyncRun,
   toTask,
   toTaxonomy,
   toTemplate,
+  type ActivityRow,
   type AttachmentRow,
   type AuditRow,
+  type BindingRow,
   type BoardRow,
   type CommentRow,
   type EmployeeRow,
+  type GoogleConnRow,
+  type MappingRow,
   type SessionRow,
   type SettingsRow,
   type SnapshotRow,
+  type SourceRow,
   type StepRow,
+  type SyncRunRow,
   type TaskRow,
   type TaxonomyRow,
   type TemplateRow,
@@ -93,13 +104,13 @@ function wrap(err: PgError | null, fallback: string): never {
 
 let cachedRole: { userId: string; role: Role; account: string } | null = null;
 
-async function fetchRole(): Promise<{ role: Role; account: string } | null> {
+async function fetchRole(): Promise<{ userId: string; role: Role; account: string } | null> {
   const sb = getSupabase();
   const { data: authData } = await sb.auth.getUser();
   const user = authData.user;
   if (!user) return null;
   if (cachedRole && cachedRole.userId === user.id) {
-    return { role: cachedRole.role, account: cachedRole.account };
+    return cachedRole;
   }
   const { data, error } = await sb
     .from('account_roles')
@@ -108,16 +119,16 @@ async function fetchRole(): Promise<{ role: Role; account: string } | null> {
     .maybeSingle();
   if (error || !data) return null;
   cachedRole = { userId: user.id, role: data.role as Role, account: data.account_label as string };
-  return { role: cachedRole.role, account: cachedRole.account };
+  return cachedRole;
 }
 
-async function requireRole(): Promise<{ role: Role; account: string }> {
+async function requireRole(): Promise<{ userId: string; role: Role; account: string }> {
   const info = await fetchRole();
   if (!info) throw new AuthError('Sesi Anda berakhir. Silakan masuk kembali.');
   return info;
 }
 
-async function requireAdmin(): Promise<{ role: Role; account: string }> {
+async function requireAdmin(): Promise<{ userId: string; role: Role; account: string }> {
   const info = await requireRole();
   if (info.role !== 'ADMIN') {
     throw new ForbiddenError('Tindakan ini hanya dapat dilakukan Admin.');
@@ -130,6 +141,20 @@ function deviceLabel(): string {
   const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
   const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Perangkat';
   return `${browser} · ${os}`;
+}
+
+function withAuditActor(
+  value: unknown,
+  actor: { accountUserId: string; employeeActorId: string | null },
+): Record<string, unknown> {
+  const meta = {
+    account_user_id: actor.accountUserId,
+    employee_actor_id: actor.employeeActorId,
+  };
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return { ...(value as Record<string, unknown>), ...meta };
+  }
+  return { value: value ?? null, ...meta };
 }
 
 /** Tulis audit (best-effort; kegagalan audit tidak menggagalkan operasi utama). */
@@ -158,7 +183,10 @@ async function auditWrite(entry: {
         entity_id: entry.entityId ?? null,
         entity_label: entry.entityLabel ?? null,
         before: entry.before ?? null,
-        after: entry.after ?? null,
+        after: withAuditActor(entry.after ?? null, {
+          accountUserId: info.userId,
+          employeeActorId: entry.employeeId ?? null,
+        }),
         success: entry.success ?? true,
         error_message: entry.errorMessage ?? null,
         session_id: readCollection<string | null>(SESSION_KEY, null),
@@ -180,6 +208,60 @@ async function assertActor(ctx: ActorContext): Promise<string> {
   if (!data) throw new ValidationError('Pegawai pelaku tidak ditemukan. Pilih pegawai pelaku Anda.');
   if (!data.active) throw new ValidationError('Pegawai pelaku nonaktif tidak dapat melakukan perubahan.');
   return ctx.employeeId;
+}
+
+/** Ekstrak Spreadsheet ID dari URL Google Sheets (atau kembalikan apa adanya). */
+function extractSheetId(urlOrId: string): string | null {
+  const trimmed = urlOrId.trim();
+  if (!trimmed) return null;
+  const m = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.exec(trimmed);
+  if (m?.[1]) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(trimmed)) return trimmed;
+  return null;
+}
+
+/**
+ * Panggil endpoint server aplikasi (Vercel Function) dengan token sesi
+ * Supabase. Kegagalan jaringan/404 TIDAK melempar — dikembalikan sebagai
+ * { ok: false } agar UI dapat menampilkan status "belum dikonfigurasi".
+ */
+async function callServerApi<T>(
+  method: 'GET' | 'POST',
+  path: string,
+  body?: unknown,
+): Promise<{ ok: boolean; data: T | null; message: string | null }> {
+  try {
+    const { data: sess } = await getSupabase().auth.getSession();
+    const token = sess.session?.access_token;
+    const res = await fetch(path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const isJson = res.headers.get('content-type')?.includes('application/json');
+    const payload = isJson ? ((await res.json()) as Record<string, unknown>) : null;
+    if (!res.ok) {
+      return {
+        ok: false,
+        data: null,
+        message:
+          (payload?.error as string | undefined) ??
+          (res.status === 404
+            ? 'Endpoint integrasi tidak tersedia — deploy Vercel Function terlebih dahulu.'
+            : `Permintaan gagal (${res.status}).`),
+      };
+    }
+    return { ok: true, data: (payload as T) ?? null, message: null };
+  } catch {
+    return {
+      ok: false,
+      data: null,
+      message: 'Server integrasi tidak dapat dihubungi. Integrasi Google belum dikonfigurasi.',
+    };
+  }
 }
 
 async function createDeviceSession(role: Role, account: string): Promise<SessionInfo> {
@@ -247,37 +329,38 @@ export const supabaseAdapter: DataService = {
       return { session, role: info.role };
     },
 
-    async loginUser(password: string): Promise<SessionInfo> {
+    /**
+     * Login terpadu — username dipetakan ke email Supabase Auth pada domain
+     * internal; role (USER/ADMIN) dibaca dari account_roles SETELAH kredensial
+     * terverifikasi. Role tidak pernah dipercaya dari frontend.
+     */
+    async login(username: string, password: string): Promise<SessionInfo> {
       const sb = getSupabase();
-      const { error } = await sb.auth.signInWithPassword({
-        email: userAccountEmail(),
-        password,
-      });
+      const uname = username.trim();
+      if (!uname) throw new AuthError('Masukkan username Anda.');
+      const email = uname.includes('@') ? uname : `${uname}@${authEmailDomain()}`;
+      const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) {
         throw new AuthError(
-          error.message.includes('rate') ? 'Terlalu banyak percobaan. Coba lagi nanti.' : 'Password tim salah. Periksa kembali.',
+          error.message.includes('rate')
+            ? 'Terlalu banyak percobaan. Coba lagi nanti.'
+            : 'Username atau password salah. Periksa kembali.',
         );
       }
       cachedRole = null;
-      const info = await requireRole();
-      const session = await createDeviceSession(info.role, info.account);
-      await auditWrite({ action: 'LOGIN', entityType: 'AUTH', entityLabel: 'Login User' });
-      return session;
-    },
-
-    async loginAdmin(username: string, password: string): Promise<SessionInfo> {
-      const sb = getSupabase();
-      const email = username.includes('@') ? username : `${username}@${authEmailDomain()}`;
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw new AuthError('Username atau password Admin salah.');
-      cachedRole = null;
-      const info = await requireRole();
-      if (info.role !== 'ADMIN') {
+      const info = await fetchRole();
+      if (!info) {
         await sb.auth.signOut();
-        throw new AuthError('Akun ini bukan akun Admin.');
+        throw new AuthError(
+          'Akun ini belum terdaftar pada aplikasi (account_roles kosong). Hubungi Admin.',
+        );
       }
       const session = await createDeviceSession(info.role, info.account);
-      await auditWrite({ action: 'LOGIN', entityType: 'AUTH', entityLabel: 'Login Admin' });
+      await auditWrite({
+        action: 'LOGIN',
+        entityType: 'AUTH',
+        entityLabel: info.role === 'ADMIN' ? 'Login Admin' : 'Login Tim PIP',
+      });
       return session;
     },
 
@@ -340,6 +423,7 @@ export const supabaseAdapter: DataService = {
           display_name: input.displayName.trim(),
           initials: input.initials.trim().toUpperCase(),
           color: input.color,
+          nip: input.nip?.trim() || null,
           position: input.position.trim(),
           team: input.team.trim(),
           sort_order: input.sortOrder ?? 999,
@@ -367,6 +451,7 @@ export const supabaseAdapter: DataService = {
       if (patch.displayName !== undefined) row.display_name = patch.displayName.trim();
       if (patch.initials !== undefined) row.initials = patch.initials.trim().toUpperCase();
       if (patch.color !== undefined) row.color = patch.color;
+      if (patch.nip !== undefined) row.nip = patch.nip?.trim() || null;
       if (patch.position !== undefined) row.position = patch.position.trim();
       if (patch.team !== undefined) row.team = patch.team.trim();
       if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
@@ -394,11 +479,18 @@ export const supabaseAdapter: DataService = {
     },
     async reorder(orderedIds, ctx) {
       await requireAdmin();
-      await assertActor(ctx);
+      const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       await Promise.all(
         orderedIds.map((id, i) => sb.from('employees').update({ sort_order: i }).eq('id', id)),
       );
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'EMPLOYEE',
+        entityLabel: 'Urutan pegawai diubah',
+        employeeId,
+        after: { orderedIds },
+      });
     },
   },
 
@@ -502,11 +594,18 @@ export const supabaseAdapter: DataService = {
     },
     async reorderSteps(orderedIds, ctx) {
       await requireRole();
-      await assertActor(ctx);
+      const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       await Promise.all(
         orderedIds.map((id, i) => sb.from('steps').update({ sort_order: i }).eq('id', id)),
       );
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'STEP',
+        entityLabel: 'Urutan step diubah',
+        employeeId,
+        after: { orderedIds },
+      });
     },
     async deleteStep(id, opts, ctx) {
       await requireRole();
@@ -879,11 +978,18 @@ export const supabaseAdapter: DataService = {
     },
     async reorderCategories(orderedIds, ctx) {
       await requireAdmin();
-      await assertActor(ctx);
+      const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       await Promise.all(
         orderedIds.map((id, i) => sb.from('categories').update({ sort_order: i }).eq('id', id)),
       );
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'CATEGORY',
+        entityLabel: 'Urutan kategori diubah',
+        employeeId,
+        after: { orderedIds },
+      });
     },
     async listLabels(opts) {
       await requireRole();
@@ -898,11 +1004,18 @@ export const supabaseAdapter: DataService = {
     },
     async reorderLabels(orderedIds, ctx) {
       await requireAdmin();
-      await assertActor(ctx);
+      const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       await Promise.all(
         orderedIds.map((id, i) => sb.from('labels').update({ sort_order: i }).eq('id', id)),
       );
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'LABEL',
+        entityLabel: 'Urutan label diubah',
+        employeeId,
+        after: { orderedIds },
+      });
     },
   },
 
@@ -964,11 +1077,18 @@ export const supabaseAdapter: DataService = {
     },
     async reorder(orderedIds, ctx) {
       await requireAdmin();
-      await assertActor(ctx);
+      const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       await Promise.all(
         orderedIds.map((id, i) => sb.from('templates').update({ sort_order: i }).eq('id', id)),
       );
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'TEMPLATE',
+        entityLabel: 'Urutan template diubah',
+        employeeId,
+        after: { orderedIds },
+      });
     },
   },
 
@@ -1144,6 +1264,351 @@ export const supabaseAdapter: DataService = {
     },
   },
 
+  // ------------------------------------------------------------ integrations
+  integrations: {
+    async listSources(opts) {
+      await requireRole();
+      let q = getSupabase().from('spreadsheet_sources').select().order('year', { ascending: false });
+      if (!opts?.includeDeleted) q = q.is('deleted_at', null);
+      if (!opts?.includeInactive) q = q.or('is_active.eq.true,deleted_at.not.is.null');
+      const { data, error } = await q;
+      if (error) wrap(error, 'Gagal memuat sumber spreadsheet');
+      return ((data ?? []) as SourceRow[]).map(toSource);
+    },
+    async saveSource(input, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const name = input.name.trim();
+      if (!name) throw new ValidationError('Nama sumber wajib diisi.');
+      const spreadsheetId = extractSheetId(input.spreadsheetUrl);
+      if (!spreadsheetId) {
+        throw new ValidationError('URL/ID spreadsheet tidak valid. Tempel tautan Google Sheets.');
+      }
+      const sb = getSupabase();
+      const row: Record<string, unknown> = {
+        source_type: input.sourceType,
+        year: input.year,
+        name,
+        spreadsheet_url: input.spreadsheetUrl.trim(),
+        spreadsheet_id: spreadsheetId,
+        updated_by_employee_id: employeeId,
+        updated_at: nowISO(),
+      };
+      if (input.isActive !== undefined) row.is_active = input.isActive;
+      if (input.syncMode !== undefined) row.sync_mode = input.syncMode;
+      let data: SourceRow | null;
+      if (input.id) {
+        const res = await sb
+          .from('spreadsheet_sources')
+          .update(row)
+          .eq('id', input.id)
+          .select()
+          .single();
+        if (res.error || !res.data) wrap(res.error, 'Gagal menyimpan sumber');
+        data = res.data as SourceRow;
+      } else {
+        const res = await sb
+          .from('spreadsheet_sources')
+          .insert({ ...row, created_by_employee_id: employeeId })
+          .select()
+          .single();
+        if (res.error || !res.data) wrap(res.error, 'Gagal menambah sumber');
+        data = res.data as SourceRow;
+        // Binding bawaan sesuai jenis sumber — mapping menunggu konfirmasi Admin.
+        const bindings =
+          input.sourceType === 'pip_progress'
+            ? [
+                { source_id: data.id, binding_type: 'detail_realisasi', sheet_name: 'Pemberian' },
+                { source_id: data.id, binding_type: 'allocation_summary', sheet_name: 'REKAP PROGRESS' },
+              ]
+            : [{ source_id: data.id, binding_type: 'activity_rows', sheet_name: 'Sheet1' }];
+        await sb.from('spreadsheet_sheet_bindings').insert(bindings);
+      }
+      const source = toSource(data);
+      await auditWrite({
+        action: input.id ? 'UPDATE' : 'CREATE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: source.id,
+        entityLabel: `${source.name} (${source.year})`,
+        employeeId,
+        after: { name: source.name, spreadsheetId: source.spreadsheetId },
+      });
+      return source;
+    },
+    async setSourceActive(id, active, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_sources')
+        .update({ is_active: active, updated_at: nowISO(), updated_by_employee_id: employeeId })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error || !data) wrap(error, 'Gagal memperbarui sumber');
+      const source = toSource(data as SourceRow);
+      await auditWrite({
+        action: active ? 'ACTIVATE' : 'DEACTIVATE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: id,
+        entityLabel: `${source.name} (${source.year})`,
+        employeeId,
+      });
+      return source;
+    },
+    async archiveSource(id, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_sources')
+        .update({
+          deleted_at: nowISO(),
+          is_active: false,
+          is_primary: false,
+          updated_at: nowISO(),
+          updated_by_employee_id: employeeId,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error || !data) wrap(error, 'Gagal mengarsipkan sumber');
+      const source = toSource(data as SourceRow);
+      await auditWrite({
+        action: 'SOFT_DELETE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: id,
+        entityLabel: `${source.name} (${source.year})`,
+        employeeId,
+      });
+    },
+    async restoreSource(id, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_sources')
+        .update({ deleted_at: null, updated_at: nowISO(), updated_by_employee_id: employeeId })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error || !data) wrap(error, 'Gagal memulihkan sumber');
+      const source = toSource(data as SourceRow);
+      await auditWrite({
+        action: 'RESTORE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: id,
+        entityLabel: `${source.name} (${source.year})`,
+        employeeId,
+      });
+      return source;
+    },
+    async setPrimary(id, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const { data, error } = await getSupabase().rpc('set_primary_source', { p_id: id });
+      if (error) wrap(error, 'Gagal menetapkan sumber utama');
+      const source = toSource(data as SourceRow);
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: id,
+        entityLabel: `${source.name} (${source.year}) dijadikan sumber utama`,
+        employeeId,
+      });
+      return source;
+    },
+    async listBindings(sourceId) {
+      await requireRole();
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_sheet_bindings')
+        .select()
+        .eq('source_id', sourceId);
+      if (error) wrap(error, 'Gagal memuat sheet binding');
+      return ((data ?? []) as BindingRow[]).map(toBinding);
+    },
+    async listMappings(bindingId) {
+      await requireRole();
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_column_mappings')
+        .select()
+        .eq('binding_id', bindingId);
+      if (error) wrap(error, 'Gagal memuat mapping kolom');
+      return ((data ?? []) as MappingRow[]).map(toMapping);
+    },
+    async confirmMapping(sourceId, bindingId, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const sb = getSupabase();
+      const { count } = await sb
+        .from('spreadsheet_column_mappings')
+        .select('id', { count: 'exact', head: true })
+        .eq('binding_id', bindingId);
+      if (!count) {
+        throw new ValidationError(
+          'Belum ada header terdeteksi — jalankan tes koneksi/preview terlebih dahulu.',
+        );
+      }
+      const { data, error } = await sb
+        .from('spreadsheet_sheet_bindings')
+        .update({ mapping_status: 'TERKONFIRMASI' })
+        .eq('id', bindingId)
+        .eq('source_id', sourceId)
+        .select()
+        .single();
+      if (error || !data) wrap(error, 'Gagal mengonfirmasi mapping');
+      const binding = toBinding(data as BindingRow);
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'SPREADSHEET_SOURCE',
+        entityId: sourceId,
+        entityLabel: `Mapping "${binding.sheetName}" dikonfirmasi`,
+        employeeId,
+      });
+      return binding;
+    },
+    async listSyncRuns(opts) {
+      await requireRole();
+      let q = getSupabase()
+        .from('spreadsheet_sync_runs')
+        .select()
+        .order('started_at', { ascending: false })
+        .limit(opts?.limit ?? 50);
+      if (opts?.sourceId) q = q.eq('source_id', opts.sourceId);
+      const { data, error } = await q;
+      if (error) wrap(error, 'Gagal memuat histori sinkronisasi');
+      return ((data ?? []) as SyncRunRow[]).map(toSyncRun);
+    },
+    async googleStatus() {
+      await requireRole();
+      // Status detail (configured) berasal dari server; fallback ke tabel metadata.
+      const viaApi = await callServerApi<{
+        configured: boolean;
+        connected: boolean;
+        email: string | null;
+        connectedAt: string | null;
+        lastUsedAt: string | null;
+        tokenStatus: 'AKTIF' | 'KEDALUWARSA' | 'DICABUT' | null;
+      }>('GET', '/api/integrations/google/status');
+      if (viaApi.ok && viaApi.data) return viaApi.data;
+      const { data } = await getSupabase()
+        .from('google_oauth_connections')
+        .select('id, email, connected_at, last_used_at, token_status')
+        .eq('id', 1)
+        .maybeSingle();
+      const row = (data ?? null) as GoogleConnRow | null;
+      return {
+        configured: false,
+        connected: Boolean(row?.email),
+        email: row?.email ?? null,
+        connectedAt: row?.connected_at ?? null,
+        lastUsedAt: row?.last_used_at ?? null,
+        tokenStatus: row?.token_status ?? null,
+      };
+    },
+    async testConnection(sourceId) {
+      await requireAdmin();
+      const res = await callServerApi<{ ok: boolean; message: string; sheets?: string[] }>(
+        'POST',
+        '/api/sync/run',
+        { sourceId, mode: 'test' },
+      );
+      if (!res.ok || !res.data) {
+        return {
+          ok: false,
+          message: res.message ?? 'Integrasi Google belum dikonfigurasi.',
+        };
+      }
+      return res.data;
+    },
+    async preview(sourceId, bindingId) {
+      await requireAdmin();
+      const res = await callServerApi<{ headers: string[]; rows: string[][] } | null>(
+        'POST',
+        '/api/sync/run',
+        { sourceId, bindingId, mode: 'preview' },
+      );
+      if (!res.ok) return null;
+      return res.data ?? null;
+    },
+    async syncNow(sourceId, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const res = await callServerApi<SyncRunRow>('POST', '/api/sync/run', {
+        sourceId,
+        mode: 'sync',
+        employeeActorId: employeeId,
+      });
+      if (!res.ok || !res.data) {
+        throw new AppError(
+          'UNAVAILABLE',
+          res.message ??
+            'Sinkronisasi belum tersedia — Integrasi Google belum dikonfigurasi di server.',
+        );
+      }
+      await auditWrite({
+        action: 'SYNC',
+        entityType: 'SYNC',
+        entityId: sourceId,
+        entityLabel: 'Sinkronisasi manual dari Admin',
+        employeeId,
+        after: { status: res.data.status, rowsRead: res.data.rows_read },
+      });
+      return toSyncRun(res.data);
+    },
+  },
+
+  // -------------------------------------------------------------- activities
+  activities: {
+    async list(opts) {
+      await requireRole();
+      let q = getSupabase()
+        .from('activity_plan_items')
+        .select()
+        .is('deleted_at', null)
+        .order('start_date')
+        .order('start_time', { nullsFirst: true });
+      if (opts?.year) q = q.eq('year', opts.year);
+      const { data, error } = await q;
+      if (error) wrap(error, 'Gagal memuat Rencana Kegiatan');
+      return ((data ?? []) as ActivityRow[]).map(toActivity);
+    },
+    async listYears() {
+      await requireRole();
+      const { data, error } = await getSupabase()
+        .from('spreadsheet_sources')
+        .select('year')
+        .eq('source_type', 'activity_plan')
+        .is('deleted_at', null);
+      if (error) return [];
+      const years = new Set<number>(
+        ((data ?? []) as Array<{ year: number }>).map((r) => r.year),
+      );
+      return [...years].sort((a, b) => b - a);
+    },
+    async syncInfo(year) {
+      await requireRole();
+      const sb = getSupabase();
+      let q = sb
+        .from('spreadsheet_sources')
+        .select()
+        .eq('source_type', 'activity_plan')
+        .is('deleted_at', null)
+        .order('is_primary', { ascending: false })
+        .order('year', { ascending: false })
+        .limit(1);
+      if (year) q = q.eq('year', year);
+      const { data } = await q;
+      const row = (data as SourceRow[] | null)?.[0];
+      if (!row) return { source: null, lastRun: null };
+      const { data: runs } = await sb
+        .from('spreadsheet_sync_runs')
+        .select()
+        .eq('source_id', row.id)
+        .order('started_at', { ascending: false })
+        .limit(1);
+      const runRow = (runs as SyncRunRow[] | null)?.[0];
+      return { source: toSource(row), lastRun: runRow ? toSyncRun(runRow) : null };
+    },
+  },
+
   // ------------------------------------------------------------------ audit
   audit: {
     async list(filter) {
@@ -1186,6 +1651,10 @@ export const supabaseAdapter: DataService = {
   // --------------------------------------------------------------- settings
   settings: {
     async get(): Promise<AppSettings> {
+      // requireRole() memastikan sesi auth siap sebelum kueri RLS dijalankan;
+      // tanpa ini, permintaan bisa terkirim anonim (RLS menyaring semua baris →
+      // 0 baris → .single() 406) dan mengotori console pada muat awal/refresh.
+      await requireRole();
       const { data, error } = await getSupabase()
         .from('app_settings')
         .select()
@@ -1281,6 +1750,12 @@ export const supabaseAdapter: DataService = {
         labels: 'labels',
         templates: 'templates',
         distribution_snapshots: 'distribution',
+        activity_plan_items: 'activities',
+        spreadsheet_sources: 'integrations',
+        spreadsheet_sheet_bindings: 'integrations',
+        spreadsheet_column_mappings: 'integrations',
+        spreadsheet_sync_runs: 'integrations',
+        pip_progress_snapshots: 'distribution',
         app_settings: 'settings',
         device_sessions: 'sessions',
         audit_log: 'audit',

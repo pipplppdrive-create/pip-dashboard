@@ -75,9 +75,9 @@ test.describe('aksesibilitas', () => {
     await expectNoSeriousViolations(page, 'detail pekerjaan');
   });
 
-  test('admin: data penyaluran & audit & pengaturan', async ({ page }) => {
+  test('admin: audit dan pengaturan', async ({ page }) => {
     await loginAsAdmin(page);
-    for (const path of ['/admin/penyaluran', '/admin/audit', '/admin/pengaturan']) {
+    for (const path of ['/admin/audit', '/admin/pengaturan']) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
       await expectNoSeriousViolations(page, path);

@@ -14,8 +14,10 @@ import { useSessionStore } from '@/features/auth/session-store';
 export function RealtimeBridge() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const session = useSessionStore((s) => s.session);
 
   useEffect(() => {
+    if (!session) return undefined;
     const service = getDataService();
     const unsubscribe = service.realtime.subscribe((event) => {
       queryClient.invalidateQueries({
@@ -34,7 +36,7 @@ export function RealtimeBridge() {
       }
     });
     return unsubscribe;
-  }, [queryClient, navigate]);
+  }, [queryClient, navigate, session]);
 
   return null;
 }

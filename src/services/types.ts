@@ -44,12 +44,15 @@ export interface Employee {
   id: string;
   /** Nama lengkap resmi. */
   fullName: string;
-  /** Nama tampilan singkat (dipakai pada kartu, feed, picker). */
+  /** Tag board satu kata (display tag) — unik di antara pegawai aktif. */
   displayName: string;
   initials: string;
   /** Warna avatar (token warna, bukan hex bebas). */
   color: string;
+  /** NIP; null bila tidak tersedia. */
+  nip: string | null;
   position: string;
+  /** Instansi/tim penempatan. */
   team: string;
   sortOrder: number;
   active: boolean;
@@ -245,7 +248,8 @@ export type AuditAction =
   | 'SETTINGS_UPDATE'
   | 'PASSWORD_CHANGE'
   | 'BACKUP'
-  | 'RESTORE_BACKUP';
+  | 'RESTORE_BACKUP'
+  | 'SYNC';
 
 export type AuditEntityType =
   | 'TASK'
@@ -260,7 +264,9 @@ export type AuditEntityType =
   | 'SNAPSHOT'
   | 'SETTINGS'
   | 'SESSION'
-  | 'AUTH';
+  | 'AUTH'
+  | 'SPREADSHEET_SOURCE'
+  | 'SYNC';
 
 export interface AuditEntry {
   id: string;
@@ -303,6 +309,139 @@ export interface ActivityEvent {
   title: string;
   /** Keterangan tambahan, mis. "To Do → On Progress". */
   detail: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Integrasi Google Sheets (read-only) — sumber data penyaluran & Rencana Kegiatan
+// ---------------------------------------------------------------------------
+
+export type SpreadsheetSourceType = 'pip_progress' | 'activity_plan';
+
+export type SyncStatus = 'BELUM_SINKRON' | 'BERHASIL' | 'PERLU_VALIDASI' | 'GAGAL';
+
+export type SyncTrigger = 'MANUAL' | 'WEBHOOK' | 'JADWAL';
+
+export type MappingStatus = 'BELUM_DIKONFIRMASI' | 'TERKONFIRMASI' | 'PERLU_VALIDASI';
+
+/** Sumber spreadsheet terdaftar (per jenis, per tahun). */
+export interface SpreadsheetSource {
+  id: string;
+  sourceType: SpreadsheetSourceType;
+  year: number;
+  name: string;
+  spreadsheetUrl: string;
+  spreadsheetId: string;
+  isActive: boolean;
+  /** Sumber utama untuk (jenis, tahun) — dipakai Dashboard/Rencana Kegiatan. */
+  isPrimary: boolean;
+  syncMode: 'WEBHOOK_DAN_INTERVAL' | 'MANUAL';
+  lastSyncedAt: string | null;
+  lastSyncStatus: SyncStatus;
+  lastError: string | null;
+  createdByEmployeeId: string | null;
+  updatedByEmployeeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+/** Satu sumber dapat membaca lebih dari satu sheet (mis. Pemberian + REKAP PROGRESS). */
+export interface SheetBinding {
+  id: string;
+  sourceId: string;
+  bindingType: 'detail_realisasi' | 'allocation_summary' | 'activity_rows';
+  sheetName: string;
+  headerRow: number;
+  dataStartRow: number;
+  optionalRange: string | null;
+  mappingStatus: MappingStatus;
+}
+
+/** Mapping kolom berbasis header (bukan posisi kolom). */
+export interface ColumnMapping {
+  id: string;
+  bindingId: string;
+  detectedHeader: string;
+  targetField: string;
+  parserType: 'text' | 'number' | 'currency' | 'date' | 'time' | 'percent';
+  transformRule: string | null;
+  required: boolean;
+  validationStatus: 'VALID' | 'BELUM_DIVALIDASI' | 'TIDAK_VALID';
+}
+
+/** Catatan satu proses sinkronisasi. */
+export interface SyncRun {
+  id: string;
+  sourceId: string;
+  trigger: SyncTrigger;
+  status: SyncStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  rowsRead: number;
+  rowsUpserted: number;
+  message: string | null;
+  errorMessage: string | null;
+}
+
+/** Status koneksi Google milik Admin (tanpa nilai token). */
+export interface GoogleConnectionStatus {
+  /** Env Google OAuth terpasang di server. */
+  configured: boolean;
+  connected: boolean;
+  email: string | null;
+  connectedAt: string | null;
+  lastUsedAt: string | null;
+  tokenStatus: 'AKTIF' | 'KEDALUWARSA' | 'DICABUT' | null;
+}
+
+// ---------------------------------------------------------------------------
+// Rencana Kegiatan (read-only dari spreadsheet)
+// ---------------------------------------------------------------------------
+
+export type ActivityStatus =
+  | 'RENCANA'
+  | 'TERJADWAL'
+  | 'BERLANGSUNG'
+  | 'SELESAI'
+  | 'DITUNDA'
+  | 'DIBATALKAN';
+
+export const ACTIVITY_STATUS_LIST: readonly ActivityStatus[] = [
+  'RENCANA',
+  'TERJADWAL',
+  'BERLANGSUNG',
+  'SELESAI',
+  'DITUNDA',
+  'DIBATALKAN',
+];
+
+export interface ActivityPlanItem {
+  id: string;
+  sourceId: string | null;
+  year: number;
+  title: string;
+  /** ISO date (yyyy-MM-dd). */
+  startDate: string;
+  /** ISO date; sama dengan startDate bila hanya satu tanggal. */
+  endDate: string;
+  /** HH:mm atau null (all day). */
+  startTime: string | null;
+  endTime: string | null;
+  allDay: boolean;
+  location: string;
+  category: string;
+  /** Nama PIC persis dari spreadsheet (tidak dihapus walau tak cocok pegawai). */
+  picNames: string[];
+  /** PIC yang berhasil dipetakan ke pegawai. */
+  picEmployeeIds: string[];
+  participants: string;
+  status: ActivityStatus;
+  notes: string;
+  meetingLink: string | null;
+  documentLink: string | null;
+  sourceRowKey: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +494,8 @@ export type ChangeTopic =
   | 'labels'
   | 'templates'
   | 'distribution'
+  | 'activities'
+  | 'integrations'
   | 'settings'
   | 'sessions'
   | 'audit';
@@ -421,6 +562,7 @@ export interface EmployeeInput {
   displayName: string;
   initials: string;
   color: string;
+  nip?: string | null;
   position: string;
   team: string;
   sortOrder?: number;
@@ -458,8 +600,11 @@ export interface BackupPayload {
 
 export interface AuthService {
   getState(): Promise<AuthState>;
-  loginUser(password: string): Promise<SessionInfo>;
-  loginAdmin(username: string, password: string): Promise<SessionInfo>;
+  /**
+   * Login terpadu: satu form untuk seluruh akun. Role (USER/ADMIN) ditentukan
+   * SETELAH kredensial terverifikasi — tidak ada pemilihan role di halaman login.
+   */
+  login(username: string, password: string): Promise<SessionInfo>;
   logout(): Promise<void>;
   /** Daftar sesi aktif/riwayat sesi (Admin). */
   listSessions(): Promise<SessionInfo[]>;
@@ -596,6 +741,57 @@ export interface RealtimeService {
   subscribe(listener: (event: ChangeEvent) => void): Unsubscribe;
 }
 
+export interface SpreadsheetSourceInput {
+  id?: string;
+  sourceType: SpreadsheetSourceType;
+  year: number;
+  name: string;
+  spreadsheetUrl: string;
+  isActive?: boolean;
+  syncMode?: SpreadsheetSource['syncMode'];
+}
+
+/**
+ * Integrasi Google Sheets — read-only. Data tidak pernah ditulis balik ke
+ * spreadsheet; Supabase berfungsi sebagai cache/snapshot/histori.
+ */
+export interface IntegrationService {
+  listSources(opts?: {
+    includeInactive?: boolean;
+    includeDeleted?: boolean;
+  }): Promise<SpreadsheetSource[]>;
+  saveSource(input: SpreadsheetSourceInput, ctx: ActorContext): Promise<SpreadsheetSource>;
+  setSourceActive(id: string, active: boolean, ctx: ActorContext): Promise<SpreadsheetSource>;
+  /** Soft delete — sumber masuk Data Terhapus. */
+  archiveSource(id: string, ctx: ActorContext): Promise<void>;
+  restoreSource(id: string, ctx: ActorContext): Promise<SpreadsheetSource>;
+  setPrimary(id: string, ctx: ActorContext): Promise<SpreadsheetSource>;
+  listBindings(sourceId: string): Promise<SheetBinding[]>;
+  listMappings(bindingId: string): Promise<ColumnMapping[]>;
+  /** Konfirmasi mapping hasil deteksi header — sinkronisasi aktif setelah ini. */
+  confirmMapping(sourceId: string, bindingId: string, ctx: ActorContext): Promise<SheetBinding>;
+  listSyncRuns(opts?: { sourceId?: string; limit?: number }): Promise<SyncRun[]>;
+  /** Status koneksi Google Admin — tanpa nilai rahasia. */
+  googleStatus(): Promise<GoogleConnectionStatus>;
+  /** Tes akses spreadsheet + keberadaan sheet wajib. */
+  testConnection(sourceId: string): Promise<{ ok: boolean; message: string; sheets?: string[] }>;
+  /** Preview baris awal sheet (deteksi header) — null bila belum terhubung. */
+  preview(
+    sourceId: string,
+    bindingId: string,
+  ): Promise<{ headers: string[]; rows: string[][] } | null>;
+  /** Sinkronkan sekarang (fallback manual). */
+  syncNow(sourceId: string, ctx: ActorContext): Promise<SyncRun>;
+}
+
+/** Rencana Kegiatan — read-only; perbaikan data dilakukan di spreadsheet. */
+export interface ActivityPlanService {
+  list(opts?: { year?: number }): Promise<ActivityPlanItem[]>;
+  listYears(): Promise<number[]>;
+  /** Info sumber & sinkronisasi terakhir untuk tahun tertentu. */
+  syncInfo(year?: number): Promise<{ source: SpreadsheetSource | null; lastRun: SyncRun | null }>;
+}
+
 export interface DataService {
   readonly mode: 'local' | 'supabase';
   auth: AuthService;
@@ -606,6 +802,8 @@ export interface DataService {
   taxonomy: TaxonomyService;
   templates: TemplateService;
   distribution: DistributionService;
+  integrations: IntegrationService;
+  activities: ActivityPlanService;
   audit: AuditReadService;
   settings: SettingsService;
   realtime: RealtimeService;

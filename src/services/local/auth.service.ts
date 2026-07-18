@@ -94,73 +94,54 @@ export const localAuth: AuthService = {
     return { session, role: session.role };
   },
 
-  async loginUser(password: string): Promise<SessionInfo> {
+  /**
+   * Login terpadu — role ditentukan SETELAH kredensial terverifikasi
+   * (tidak ada pemilihan role di halaman login).
+   */
+  async login(username: string, password: string): Promise<SessionInfo> {
     await ensureSeeded();
     const auth = db.auth();
     if (!auth) throw new AuthError('Penyimpanan lokal belum siap. Muat ulang halaman.');
-    checkRateLimit(auth.userAccount);
+    const uname = username.trim().toLowerCase();
+    if (!uname) throw new AuthError('Masukkan username Anda.');
+    checkRateLimit(uname);
     const hash = await hashPassword(password);
-    if (hash !== auth.userPasswordHash) {
-      recordFail(auth.userAccount);
+
+    let role: SessionInfo['role'] | null = null;
+    let account: string | null = null;
+    if (uname === auth.userAccount.toLowerCase() && hash === auth.userPasswordHash) {
+      role = 'USER';
+      account = auth.userAccount;
+    } else if (uname === auth.adminUsername.toLowerCase() && hash === auth.adminPasswordHash) {
+      role = 'ADMIN';
+      account = auth.adminUsername;
+    }
+
+    if (!role || !account) {
+      recordFail(uname);
       writeAudit({
         actorRole: 'USER',
-        actorAccount: auth.userAccount,
-        employeeId: null,
-        action: 'LOGIN_FAILED',
-        entityType: 'AUTH',
-        entityLabel: 'Login User gagal',
-        success: false,
-        errorMessage: 'Password salah',
-        deviceLabel: deviceLabel(),
-      });
-      throw new AuthError('Password tim salah. Periksa kembali.');
-    }
-    clearFails(auth.userAccount);
-    const session = createSession('USER', auth.userAccount);
-    writeAudit({
-      actorRole: 'USER',
-      actorAccount: auth.userAccount,
-      employeeId: null,
-      action: 'LOGIN',
-      entityType: 'AUTH',
-      entityLabel: 'Login User',
-      sessionId: session.id,
-      deviceLabel: session.deviceLabel,
-    });
-    return session;
-  },
-
-  async loginAdmin(username: string, password: string): Promise<SessionInfo> {
-    await ensureSeeded();
-    const auth = db.auth();
-    if (!auth) throw new AuthError('Penyimpanan lokal belum siap. Muat ulang halaman.');
-    checkRateLimit(`admin:${username.toLowerCase()}`);
-    const hash = await hashPassword(password);
-    const ok = username.trim().toLowerCase() === auth.adminUsername && hash === auth.adminPasswordHash;
-    if (!ok) {
-      recordFail(`admin:${username.toLowerCase()}`);
-      writeAudit({
-        actorRole: 'ADMIN',
         actorAccount: username,
         employeeId: null,
         action: 'LOGIN_FAILED',
         entityType: 'AUTH',
-        entityLabel: 'Login Admin gagal',
+        entityLabel: 'Login gagal',
         success: false,
         errorMessage: 'Kredensial salah',
         deviceLabel: deviceLabel(),
       });
-      throw new AuthError('Username atau password Admin salah.');
+      throw new AuthError('Username atau password salah. Periksa kembali.');
     }
-    clearFails(`admin:${username.toLowerCase()}`);
-    const session = createSession('ADMIN', auth.adminUsername);
+
+    clearFails(uname);
+    const session = createSession(role, account);
     writeAudit({
-      actorRole: 'ADMIN',
-      actorAccount: auth.adminUsername,
+      actorRole: role,
+      actorAccount: account,
       employeeId: null,
       action: 'LOGIN',
       entityType: 'AUTH',
-      entityLabel: 'Login Admin',
+      entityLabel: role === 'ADMIN' ? 'Login Admin' : 'Login Tim PIP',
       sessionId: session.id,
       deviceLabel: session.deviceLabel,
     });

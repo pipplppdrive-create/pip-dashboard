@@ -51,11 +51,23 @@
   --color-info-600: #0284c7;
   --color-info-700: #0369a1;
 
+  /* Aksen sekunder (violet/cyan/mint) untuk gradient terkontrol */
+  --color-accent-violet: #7c3aed;
+  --color-accent-cyan: #06b6d4;
+  --color-accent-mint: #34d399;
+
   /* Bayangan lembut untuk kartu */
   --shadow-card: 0 1px 2px rgb(15 23 42 / 0.05), 0 4px 16px -4px rgb(15 23 42 / 0.08);
   --shadow-pop: 0 4px 12px -2px rgb(15 23 42 / 0.12), 0 12px 32px -8px rgb(15 23 42 / 0.16);
+  --shadow-lift: 0 2px 4px rgb(15 23 42 / 0.06), 0 10px 24px -6px rgb(28 77 196 / 0.16);
 
   --radius-card: 0.875rem;
+
+  /* Gradient siap pakai (background utama, tombol, nav aktif, icon container) */
+  --gradient-app: linear-gradient(160deg, #f7f9ff 0%, #eef3fd 45%, #eef7fb 100%);
+  --gradient-brand: linear-gradient(135deg, #2361e3 0%, #4f46e5 55%, #7c3aed 100%);
+  --gradient-brand-soft: linear-gradient(135deg, #e0edfe 0%, #ede9fe 60%, #e0f7fa 100%);
+  --gradient-header: linear-gradient(120deg, #eef3fd 0%, #f3effd 55%, #e9f9f4 100%);
 }
 
 /* ============================================================
@@ -81,7 +93,8 @@ html {
 }
 
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  @apply text-slate-900 antialiased;
+  background: var(--gradient-app) fixed;
   font-feature-settings: 'ss01';
 }
 
@@ -144,3 +157,98 @@ body {
 .animate-fade-in-up {
   animation: fade-in-up 0.25s ease-out both;
 }
+
+/* ============================================================
+   Micro-interactions (Docs/09 §F) — feedback hover/pressed 120–220ms
+   ============================================================ */
+
+/* Elemen interaktif umum: pressed mengecil ±0.97 lalu kembali */
+.pressable {
+  transition:
+    transform 140ms ease,
+    box-shadow 180ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
+}
+.pressable:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Kartu/tombol yang "terangkat" ringan saat hover */
+.liftable {
+  transition:
+    transform 180ms ease,
+    box-shadow 200ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+@media (hover: hover) {
+  .liftable:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lift);
+  }
+}
+.liftable:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* ============================================================
+   Maskot login (SVG + CSS, tanpa asset eksternal)
+   ============================================================ */
+
+@keyframes mascot-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+.mascot-blink {
+  animation: mascot-blink 4.2s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.mascot-char {
+  transition: transform 200ms ease;
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+}
+.mascot-delay-1 { transition-delay: 30ms; }
+.mascot-delay-2 { transition-delay: 60ms; }
+
+.mascot-lean { transform: rotate(3deg) translateY(1px); }
+.mascot-lean-left { transform: rotate(-3deg) translateY(1px); }
+.mascot-turn { transform: translateX(-3px) rotate(-2deg); }
+
+/* Tangan menutup mata: default di bawah (tersembunyi di badan) */
+.mascot-hands {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: transform 190ms ease, opacity 150ms ease;
+  transform-box: fill-box;
+}
+.mascot-hands-up {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes mascot-hop {
+  0% { transform: translateY(0); }
+  40% { transform: translateY(-5px); }
+  100% { transform: translateY(0); }
+}
+.mascot-hop { animation: mascot-hop 380ms ease-out 1; }
+
+@keyframes mascot-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+  80% { transform: translateX(-1.5px); }
+}
+.mascot-shake { animation: mascot-shake 260ms ease-in-out 1; }
+
+.mascot-sparkles {
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.mascot-sparkles-on { opacity: 1; }

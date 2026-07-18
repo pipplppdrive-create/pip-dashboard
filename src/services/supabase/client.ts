@@ -2,18 +2,29 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let client: SupabaseClient | null = null;
 
+function publicEnv(name: 'SUPABASE_URL' | 'SUPABASE_ANON_KEY' | 'AUTH_EMAIL_DOMAIN'): string {
+  const viteValue = import.meta.env[`VITE_${name}`];
+  const nextValue = import.meta.env[`NEXT_PUBLIC_${name}`];
+  const value = typeof viteValue === 'string' && viteValue ? viteValue : nextValue;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function hasUsableValue(value: string): boolean {
+  return Boolean(value && !value.includes('<') && !value.includes('>') && !value.includes('yang baru'));
+}
+
 export function isSupabaseConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+  return hasUsableValue(publicEnv('SUPABASE_URL')) && hasUsableValue(publicEnv('SUPABASE_ANON_KEY'));
 }
 
 /** Klien Supabase (singleton). Panggil hanya bila isSupabaseConfigured(). */
 export function getSupabase(): SupabaseClient {
   if (!client) {
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    if (!url || !key) {
+    const url = publicEnv('SUPABASE_URL');
+    const key = publicEnv('SUPABASE_ANON_KEY');
+    if (!hasUsableValue(url) || !hasUsableValue(key)) {
       throw new Error(
-        'Supabase belum dikonfigurasi: isi VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY.',
+        'Supabase belum dikonfigurasi: isi VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY atau NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY.',
       );
     }
     client = createClient(url, key, {
@@ -25,7 +36,7 @@ export function getSupabase(): SupabaseClient {
 
 /** Domain email akun (user tim & admin dibuat dengan email pada domain ini). */
 export function authEmailDomain(): string {
-  return import.meta.env.VITE_AUTH_EMAIL_DOMAIN ?? 'pip.local';
+  return publicEnv('AUTH_EMAIL_DOMAIN') || 'pip.local';
 }
 
 /** Email akun bersama Tim PIP. */

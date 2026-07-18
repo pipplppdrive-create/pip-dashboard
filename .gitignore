@@ -7,8 +7,13 @@ dist-ssr/
 
 # environment — jangan commit secret
 .env
+.env.local
+.env.*.local
 .env.*
 !.env.example
+
+# Supabase local CLI state
+supabase/.temp/
 
 # test artifacts
 coverage/
@@ -28,3 +33,7 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# Claude Code local tooling (bukan bagian aplikasi)
+.agents/
+skills-lock.json

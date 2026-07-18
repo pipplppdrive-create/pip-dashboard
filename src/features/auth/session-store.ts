@@ -14,8 +14,8 @@ interface SessionState {
   actorPickerOpen: boolean;
   init(): Promise<void>;
   refresh(): Promise<void>;
-  loginUser(password: string): Promise<void>;
-  loginAdmin(username: string, password: string): Promise<void>;
+  /** Login terpadu — role ditentukan server setelah kredensial terverifikasi. */
+  login(username: string, password: string): Promise<Role>;
   logout(): Promise<void>;
   setActor(id: string | null): void;
   openActorPicker(): void;
@@ -48,14 +48,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ session: state.session, role: state.role, status: 'ready' });
   },
 
-  async loginUser(password) {
-    const session = await getDataService().auth.loginUser(password);
+  async login(username, password) {
+    const session = await getDataService().auth.login(username, password);
     set({ session, role: session.role });
-  },
-
-  async loginAdmin(username, password) {
-    const session = await getDataService().auth.loginAdmin(username, password);
-    set({ session, role: session.role });
+    return session.role;
   },
 
   async logout() {

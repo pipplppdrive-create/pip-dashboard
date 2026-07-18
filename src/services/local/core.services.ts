@@ -37,13 +37,27 @@ function validateEmployeeInput(input: Partial<EmployeeInput>): void {
   if (input.fullName !== undefined && !input.fullName.trim()) {
     throw new ValidationError('Nama lengkap wajib diisi.');
   }
-  if (input.displayName !== undefined && !input.displayName.trim()) {
-    throw new ValidationError('Nama tampilan wajib diisi.');
+  if (input.displayName !== undefined) {
+    const tag = input.displayName.trim();
+    if (!tag) throw new ValidationError('Tag board wajib diisi.');
+    if (/\s/.test(tag)) throw new ValidationError('Tag board harus satu kata (tanpa spasi).');
   }
   if (input.initials !== undefined) {
     const ini = input.initials.trim();
     if (!ini || ini.length > 3) throw new ValidationError('Inisial 1–3 karakter.');
   }
+}
+
+/** Tag board harus unik di antara pegawai aktif. */
+function assertUniqueTag(tag: string, active: boolean, excludeId?: string): void {
+  if (!active) return;
+  const dup = db
+    .employees()
+    .some(
+      (e) =>
+        e.id !== excludeId && e.active && e.displayName.toLowerCase() === tag.toLowerCase(),
+    );
+  if (dup) throw new ValidationError(`Tag "${tag}" sudah dipakai pegawai aktif lain.`);
 }
 
 export const localEmployees: EmployeeService = {
@@ -59,6 +73,7 @@ export const localEmployees: EmployeeService = {
     requireAdmin();
     const employeeId = requireActor(ctx);
     validateEmployeeInput(input);
+    assertUniqueTag(input.displayName.trim(), input.active ?? true);
     const employees = db.employees();
     const employee: Employee = {
       id: uid('emp'),
@@ -66,6 +81,7 @@ export const localEmployees: EmployeeService = {
       displayName: input.displayName.trim(),
       initials: input.initials.trim().toUpperCase(),
       color: input.color,
+      nip: input.nip?.trim() || null,
       position: input.position.trim(),
       team: input.team.trim(),
       sortOrder: input.sortOrder ?? employees.length,
@@ -94,12 +110,15 @@ export const localEmployees: EmployeeService = {
     const employees = db.employees();
     const prev = employees.find((e) => e.id === id);
     if (!prev) throw new NotFoundError('Pegawai tidak ditemukan.');
+    const nextTag = patch.displayName?.trim() ?? prev.displayName;
+    assertUniqueTag(nextTag, patch.active ?? prev.active, id);
     const next: Employee = {
       ...prev,
       fullName: patch.fullName?.trim() ?? prev.fullName,
-      displayName: patch.displayName?.trim() ?? prev.displayName,
+      displayName: nextTag,
       initials: patch.initials?.trim().toUpperCase() ?? prev.initials,
       color: patch.color ?? prev.color,
+      nip: patch.nip !== undefined ? patch.nip?.trim() || null : prev.nip,
       position: patch.position?.trim() ?? prev.position,
       team: patch.team?.trim() ?? prev.team,
       sortOrder: patch.sortOrder ?? prev.sortOrder,
@@ -518,6 +537,8 @@ export const localSettings: SettingsService = {
       'labels',
       'templates',
       'distribution',
+      'activities',
+      'integrations',
       'settings',
       'sessions',
       'audit',

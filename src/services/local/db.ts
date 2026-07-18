@@ -1,4 +1,5 @@
 import type {
+  ActivityPlanItem,
   AppSettings,
   AuditAction,
   AuditEntityType,
@@ -6,12 +7,16 @@ import type {
   Attachment,
   BoardInfo,
   Category,
+  ColumnMapping,
   DistributionSnapshot,
   Employee,
   Label,
   Role,
   SessionInfo,
+  SheetBinding,
+  SpreadsheetSource,
   Step,
+  SyncRun,
   Task,
   TaskComment,
   TaskTemplate,
@@ -42,6 +47,11 @@ export const COL = {
   snapshots: 'snapshots',
   settings: 'settings',
   audit: 'audit',
+  sources: 'sources',
+  bindings: 'bindings',
+  columnMappings: 'columnMappings',
+  syncRuns: 'syncRuns',
+  activities: 'activities',
 } as const;
 
 export interface AuthRecord {
@@ -84,7 +94,7 @@ export async function hashPassword(password: string): Promise<string> {
 // Seed sekali pakai
 // ---------------------------------------------------------------------------
 
-const SEED_VERSION = 1;
+const SEED_VERSION = 2;
 let seedPromise: Promise<void> | null = null;
 
 export function ensureSeeded(): Promise<void> {
@@ -113,6 +123,11 @@ export function ensureSeeded(): Promise<void> {
       writeCollection(COL.snapshots, seed.snapshots);
       writeCollection(COL.settings, seed.settings);
       writeCollection(COL.audit, seed.audit);
+      writeCollection(COL.sources, seed.sources);
+      writeCollection(COL.bindings, seed.bindings);
+      writeCollection(COL.columnMappings, seed.columnMappings);
+      writeCollection(COL.syncRuns, seed.syncRuns);
+      writeCollection(COL.activities, seed.activities);
       writeCollection<SessionInfo[]>(COL.sessions, []);
       writeCollection<Record<string, LoginAttemptRecord>>(COL.loginAttempts, {});
       writeCollection<MetaRecord>(COL.meta, { seedVersion: SEED_VERSION, seededAt: nowISO() });
@@ -144,6 +159,11 @@ export const db = {
   settings: () => readCollection<AppSettings | null>(COL.settings, null),
   audit: () => readCollection<AuditEntry[]>(COL.audit, []),
   sessions: () => readCollection<SessionInfo[]>(COL.sessions, []),
+  sources: () => readCollection<SpreadsheetSource[]>(COL.sources, []),
+  bindings: () => readCollection<SheetBinding[]>(COL.bindings, []),
+  columnMappings: () => readCollection<ColumnMapping[]>(COL.columnMappings, []),
+  syncRuns: () => readCollection<SyncRun[]>(COL.syncRuns, []),
+  activities: () => readCollection<ActivityPlanItem[]>(COL.activities, []),
   auth: () => readCollection<AuthRecord | null>(COL.auth, null),
   loginAttempts: () => readCollection<Record<string, LoginAttemptRecord>>(COL.loginAttempts, {}),
   write: writeCollection,

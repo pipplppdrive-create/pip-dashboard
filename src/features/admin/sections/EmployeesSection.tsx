@@ -92,7 +92,10 @@ export function EmployeesSection() {
                 {!emp.active && <Badge tone="neutral">Nonaktif</Badge>}
               </p>
               <p className="text-xs text-slate-500">
-                {emp.position} · {emp.team} · tampil sebagai “{emp.displayName}”
+                {[emp.position, emp.team, emp.nip ? `NIP ${emp.nip}` : null]
+                  .filter(Boolean)
+                  .join(' · ')}{' '}
+                · tag board “{emp.displayName}”
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -156,6 +159,7 @@ function EmployeeDialog({
     displayName: '',
     initials: '',
     color: AVATAR_COLOR_KEYS[0] ?? 'blue',
+    nip: '',
     position: '',
     team: '',
   });
@@ -173,6 +177,7 @@ function EmployeeDialog({
               displayName: employee.displayName,
               initials: employee.initials,
               color: employee.color,
+              nip: employee.nip ?? '',
               position: employee.position,
               team: employee.team,
             }
@@ -181,6 +186,7 @@ function EmployeeDialog({
               displayName: '',
               initials: '',
               color: AVATAR_COLOR_KEYS[0] ?? 'blue',
+              nip: '',
               position: '',
               team: '',
             },
@@ -247,7 +253,10 @@ function EmployeeDialog({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Nama tampilan" hint="Kosongkan = kata pertama nama.">
+          <Field
+            label="Tag board"
+            hint="Satu kata, unik antar pegawai aktif. Kosongkan = kata pertama nama."
+          >
             <Input
               value={form.displayName}
               onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
@@ -262,6 +271,14 @@ function EmployeeDialog({
               placeholder="BS"
             />
           </Field>
+          <Field label="NIP" hint="Kosongkan bila tidak ada.">
+            <Input
+              value={form.nip ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, nip: e.target.value }))}
+              inputMode="numeric"
+              placeholder="cth. 198102082005011003"
+            />
+          </Field>
           <Field label="Jabatan">
             <Input
               value={form.position}
@@ -269,11 +286,11 @@ function EmployeeDialog({
               placeholder="cth. Analis Data"
             />
           </Field>
-          <Field label="Tim">
+          <Field label="Instansi/Tim">
             <Input
               value={form.team}
               onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))}
-              placeholder="cth. Penyaluran"
+              placeholder="cth. Puslapdik"
             />
           </Field>
         </div>

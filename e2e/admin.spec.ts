@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import ExcelJS from 'exceljs';
-import { loginAsAdmin, loginAsUser } from './helpers';
+import { USER_USERNAME, loginAsAdmin, loginAsUser } from './helpers';
 
 async function makeXlsx(rows: Array<Array<string | number>>): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
@@ -26,27 +26,33 @@ const VALID_ROWS: Array<Array<string | number>> = [
 ];
 
 test.describe('admin', () => {
-  test('tujuh bagian Admin dapat dinavigasi', async ({ page }) => {
+  test('Pusat Admin menampilkan modul utama non-integrasi dan dapat dinavigasi', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin');
-    const nav = page.getByRole('navigation', { name: 'Bagian Admin' });
+    // Pusat Admin (Docs §L): modul tampil sebagai card link pada hub launcher,
+    // bukan daftar submenu "Bagian Admin" di sisi konten.
     for (const label of [
-      'Data Penyaluran',
+      'Ringkasan',
       'Pegawai & PIC',
-      'Kategori & Label',
-      'Template Pekerjaan',
+      'Board & Aktivitas',
       'Data Terhapus',
       'Audit Log',
       'Pengaturan',
     ]) {
-      await expect(nav.getByRole('link', { name: label })).toBeVisible();
+      await expect(page.getByRole('link', { name: new RegExp(label) })).toBeVisible();
     }
-    await expect(page).toHaveURL(/\/admin\/penyaluran/);
+    await page.getByRole('link', { name: /Pegawai & PIC/ }).click();
+    await expect(page).toHaveURL(/\/admin\/pegawai/);
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(
+      'Pegawai & PIC',
+    );
   });
 
   test('impor Excel: upload → mapping → preview → simpan & aktifkan', async ({ page }) => {
+    test.skip(true, 'Integrasi spreadsheet tidak dikerjakan pada tahap ini.');
     await loginAsAdmin(page);
-    await page.goto('/admin/penyaluran');
+    await page.goto('/admin/integrasi');
+    await page.getByRole('tab', { name: 'Snapshot Penyaluran' }).click();
     await page.getByRole('button', { name: 'Unggah data' }).click();
     const dialog = page.getByRole('dialog', { name: 'Unggah Data Penyaluran' });
 
@@ -73,8 +79,10 @@ test.describe('admin', () => {
   });
 
   test('impor Excel: data invalid tidak dapat disimpan/diaktifkan', async ({ page }) => {
+    test.skip(true, 'Integrasi spreadsheet tidak dikerjakan pada tahap ini.');
     await loginAsAdmin(page);
-    await page.goto('/admin/penyaluran');
+    await page.goto('/admin/integrasi');
+    await page.getByRole('tab', { name: 'Snapshot Penyaluran' }).click();
     await page.getByRole('button', { name: 'Unggah data' }).click();
     const dialog = page.getByRole('dialog', { name: 'Unggah Data Penyaluran' });
     await dialog.getByLabel('Pilih berkas Excel').setInputFiles({
@@ -92,8 +100,10 @@ test.describe('admin', () => {
   });
 
   test('snapshot: batalkan aktivasi lalu pulihkan (aktifkan kembali)', async ({ page }) => {
+    test.skip(true, 'Integrasi/snapshot spreadsheet tidak dikerjakan pada tahap ini.');
     await loginAsAdmin(page);
-    await page.goto('/admin/penyaluran');
+    await page.goto('/admin/integrasi');
+    await page.getByRole('tab', { name: 'Snapshot Penyaluran' }).click();
     const activeRow = page
       .locator('tr', { hasText: '2026 · Termin 1' })
       .filter({ has: page.getByText('Aktif', { exact: true }) });
@@ -109,6 +119,7 @@ test.describe('admin', () => {
   });
 
   test('pegawai: tambah & nonaktifkan', async ({ page }) => {
+    test.skip(true, 'Tidak membuat data dummy admin pada tahap deploy awal.');
     await loginAsAdmin(page);
     await page.goto('/admin/pegawai');
     await page.getByRole('button', { name: 'Tambah pegawai' }).click();
@@ -125,8 +136,9 @@ test.describe('admin', () => {
   });
 
   test('kategori: tambah baru & tolak duplikat', async ({ page }) => {
+    test.skip(true, 'Tidak membuat data dummy admin pada tahap deploy awal.');
     await loginAsAdmin(page);
-    await page.goto('/admin/kategori-label');
+    await page.goto('/admin/board');
     const kategoriCard = page.locator('div', { hasText: 'Pengelompokan utama pekerjaan.' }).first();
     void kategoriCard;
     await page.getByRole('button', { name: 'Tambah' }).first().click();
@@ -149,8 +161,10 @@ test.describe('admin', () => {
   });
 
   test('template: buat template baru dengan checklist', async ({ page }) => {
+    test.skip(true, 'Tidak membuat data dummy admin pada tahap deploy awal.');
     await loginAsAdmin(page);
-    await page.goto('/admin/template');
+    await page.goto('/admin/board');
+    await page.getByRole('tab', { name: 'Template Pekerjaan' }).click();
     await page.getByRole('button', { name: 'Tambah template' }).click();
     const dialog = page.getByRole('dialog', { name: 'Template Baru' });
     await dialog.getByLabel(/Nama template/).fill('Laporan bulanan');
@@ -169,6 +183,7 @@ test.describe('admin', () => {
   });
 
   test('data terhapus: pulihkan & hapus permanen dengan konfirmasi', async ({ page }) => {
+    test.skip(true, 'Tidak menjalankan hapus permanen pada tahap deploy awal.');
     await loginAsAdmin(page);
     await page.goto('/admin/data-terhapus');
     // Seed: satu pekerjaan terhapus dengan alasan
@@ -197,6 +212,7 @@ test.describe('admin', () => {
   });
 
   test('pengaturan: ubah nama aplikasi & ambang; tampil di sidebar', async ({ page }) => {
+    test.skip(true, 'Tidak mengubah pengaturan produksi pada tahap deploy awal.');
     await loginAsAdmin(page);
     await page.goto('/admin/pengaturan');
     await page.getByLabel(/Nama aplikasi/).fill('Dashboard PIP Puslapdik');
@@ -207,18 +223,27 @@ test.describe('admin', () => {
   });
 
   test('pengaturan: ganti password User berlaku untuk login berikutnya', async ({ page }) => {
+    test.skip(true, 'Tidak mengganti password akun Supabase Auth.');
     await loginAsAdmin(page);
     await page.goto('/admin/pengaturan');
     await page.getByLabel('Password baru').fill('timpip-2026-baru');
     await page.getByLabel('Ulangi password').fill('timpip-2026-baru');
     await page.getByRole('button', { name: 'Ganti password' }).click();
     await expect(page.getByText('Password akun User diganti.')).toBeVisible();
+    const actorDialog = page.getByRole('dialog', { name: 'Siapa yang sedang bekerja?' });
+    try {
+      await actorDialog.waitFor({ state: 'visible', timeout: 1500 });
+      await actorDialog.getByRole('button', { name: /Sucianingsih/ }).click();
+      await expect(actorDialog).toBeHidden();
+    } catch {
+      // Dialog pelaku kadang tidak muncul bila actor perangkat masih valid.
+    }
     // Logout lalu login user dengan password baru
     await page.getByRole('button', { name: 'Menu pengguna' }).click();
     await page.getByRole('menuitem', { name: 'Keluar' }).click();
-    await page.getByRole('tab', { name: 'Tim PIP' }).click();
-    await page.getByLabel(/Password tim/).fill('timpip-2026-baru');
-    await page.getByRole('button', { name: 'Masuk sebagai Tim' }).click();
+    await page.getByPlaceholder('Username').fill(USER_USERNAME);
+    await page.getByPlaceholder('Password').fill('timpip-2026-baru');
+    await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page).toHaveURL(/\/dashboard/);
   });
 

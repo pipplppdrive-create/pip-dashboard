@@ -3,6 +3,8 @@ import {
   ADMIN_PASSWORD,
   ADMIN_USERNAME,
   USER_PASSWORD,
+  USER_USERNAME,
+  IS_SUPABASE_E2E,
   collectConsoleErrors,
   loginAsAdmin,
   loginAsUser,
@@ -17,9 +19,10 @@ test.describe('login & akses', () => {
 
   test('password salah menampilkan pesan error', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel(/Password tim/).fill('password-salah');
-    await page.getByRole('button', { name: 'Masuk sebagai Tim' }).click();
-    await expect(page.getByRole('alert')).toContainText('Password tim salah');
+    await page.getByPlaceholder('Username').fill(USER_USERNAME);
+    await page.getByPlaceholder('Password').fill('password-salah');
+    await page.getByRole('button', { name: 'Masuk' }).click();
+    await expect(page.getByRole('alert')).toContainText('Username atau password salah');
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -27,9 +30,9 @@ test.describe('login & akses', () => {
     page,
   }) => {
     const errors = collectConsoleErrors(page);
-    await loginAsUser(page, 'Rina Wahyuni');
+    await loginAsUser(page, 'Tri Hesti Wahyudiati');
     // Chip pegawai pelaku tampil
-    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Rina');
+    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Hesti');
 
     // Navigasi User: Dashboard & Pekerjaan tampil, Admin tidak ada
     const nav = page.getByRole('navigation', { name: 'Menu' });
@@ -65,10 +68,11 @@ test.describe('login & akses', () => {
     await expect(nav.getByRole('link', { name: 'Admin' })).toBeVisible();
     await nav.getByRole('link', { name: 'Admin' }).click();
     await expect(page).toHaveURL(/\/admin/);
-    await expect(page.getByRole('heading', { name: 'Admin' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Admin', exact: true })).toBeVisible();
   });
 
   test('Admin dapat melihat dan mencabut sesi User', async ({ page }) => {
+    test.skip(IS_SUPABASE_E2E, 'Simulasi sesi localStorage hanya berlaku untuk adapter lokal.');
     await loginAsAdmin(page);
 
     // Fixture: sesi USER aktif dari "perangkat lain" (satu perangkat hanya
@@ -106,25 +110,25 @@ test.describe('login & akses', () => {
   });
 
   test('ganti pegawai pelaku dari menu pengguna', async ({ page }) => {
-    await loginAsUser(page, 'Rina Wahyuni');
+    await loginAsUser(page, 'Tri Hesti Wahyudiati');
     await page.getByRole('button', { name: 'Menu pengguna' }).click();
     await page.getByRole('menuitem', { name: 'Ganti pegawai pelaku' }).click();
     const dialog = page.getByRole('dialog', { name: 'Siapa yang sedang bekerja?' });
-    await dialog.getByRole('button', { name: /Hendra Gunawan/ }).click();
-    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Hendra');
+    await dialog.getByRole('button', { name: /Rakean Sundayana/ }).click();
+    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Rakean');
   });
 
   test('rate limit: input berulang kali salah tetap aman (pesan jelas)', async ({ page }) => {
+    test.skip(IS_SUPABASE_E2E, 'Tidak memicu rate-limit pada akun Supabase Auth nyata.');
     await page.goto('/login');
-    await page.getByRole('tab', { name: 'Admin' }).click();
     for (let i = 0; i < 5; i += 1) {
-      await page.getByLabel(/Username/).fill(ADMIN_USERNAME);
-      await page.getByLabel(/^Password/).fill('salah-terus');
-      await page.getByRole('button', { name: 'Masuk sebagai Admin' }).click();
+      await page.getByPlaceholder('Username').fill(ADMIN_USERNAME);
+      await page.getByPlaceholder('Password').fill('salah-terus');
+      await page.getByRole('button', { name: 'Masuk' }).click();
       await expect(page.getByRole('alert')).toBeVisible();
     }
-    await page.getByLabel(/^Password/).fill(ADMIN_PASSWORD);
-    await page.getByRole('button', { name: 'Masuk sebagai Admin' }).click();
+    await page.getByPlaceholder('Password').fill(ADMIN_PASSWORD);
+    await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page.getByRole('alert')).toContainText('Terlalu banyak percobaan');
   });
 

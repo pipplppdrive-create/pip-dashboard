@@ -1,18 +1,23 @@
 /** Bentuk baris tabel Postgres (snake_case) + konverter ke tipe domain. */
 import type {
+  ActivityPlanItem,
   AppSettings,
   Attachment,
   AuditEntry,
   BoardInfo,
   Category,
   ChecklistGroup,
+  ColumnMapping,
   DistributionRow,
   DistributionSnapshot,
   Employee,
   Label,
   Role,
   SessionInfo,
+  SheetBinding,
+  SpreadsheetSource,
   Step,
+  SyncRun,
   Task,
   TaskComment,
   TaskTemplate,
@@ -24,6 +29,7 @@ export interface EmployeeRow {
   display_name: string;
   initials: string;
   color: string;
+  nip: string | null;
   position: string;
   team: string;
   sort_order: number;
@@ -38,6 +44,7 @@ export const toEmployee = (r: EmployeeRow): Employee => ({
   displayName: r.display_name,
   initials: r.initials,
   color: r.color,
+  nip: r.nip ?? null,
   position: r.position,
   team: r.team,
   sortOrder: r.sort_order,
@@ -342,3 +349,173 @@ export const toSettings = (r: SettingsRow): AppSettings => ({
   updatedAt: r.updated_at,
   version: r.version,
 });
+
+// ---------------------------------------------------------------------------
+// Integrasi Google Sheets & Rencana Kegiatan
+// ---------------------------------------------------------------------------
+
+export interface SourceRow {
+  id: string;
+  source_type: SpreadsheetSource['sourceType'];
+  year: number;
+  name: string;
+  spreadsheet_url: string;
+  spreadsheet_id: string;
+  is_active: boolean;
+  is_primary: boolean;
+  sync_mode: SpreadsheetSource['syncMode'];
+  last_synced_at: string | null;
+  last_sync_status: SpreadsheetSource['lastSyncStatus'];
+  last_error: string | null;
+  created_by_employee_id: string | null;
+  updated_by_employee_id: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export const toSource = (r: SourceRow): SpreadsheetSource => ({
+  id: r.id,
+  sourceType: r.source_type,
+  year: r.year,
+  name: r.name,
+  spreadsheetUrl: r.spreadsheet_url,
+  spreadsheetId: r.spreadsheet_id,
+  isActive: r.is_active,
+  isPrimary: r.is_primary,
+  syncMode: r.sync_mode,
+  lastSyncedAt: r.last_synced_at,
+  lastSyncStatus: r.last_sync_status,
+  lastError: r.last_error,
+  createdByEmployeeId: r.created_by_employee_id,
+  updatedByEmployeeId: r.updated_by_employee_id,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  deletedAt: r.deleted_at,
+});
+
+export interface BindingRow {
+  id: string;
+  source_id: string;
+  binding_type: SheetBinding['bindingType'];
+  sheet_name: string;
+  header_row: number;
+  data_start_row: number;
+  optional_range: string | null;
+  mapping_status: SheetBinding['mappingStatus'];
+}
+
+export const toBinding = (r: BindingRow): SheetBinding => ({
+  id: r.id,
+  sourceId: r.source_id,
+  bindingType: r.binding_type,
+  sheetName: r.sheet_name,
+  headerRow: r.header_row,
+  dataStartRow: r.data_start_row,
+  optionalRange: r.optional_range,
+  mappingStatus: r.mapping_status,
+});
+
+export interface MappingRow {
+  id: string;
+  binding_id: string;
+  detected_header: string;
+  target_field: string;
+  parser_type: ColumnMapping['parserType'];
+  transform_rule: string | null;
+  required: boolean;
+  validation_status: ColumnMapping['validationStatus'];
+}
+
+export const toMapping = (r: MappingRow): ColumnMapping => ({
+  id: r.id,
+  bindingId: r.binding_id,
+  detectedHeader: r.detected_header,
+  targetField: r.target_field,
+  parserType: r.parser_type,
+  transformRule: r.transform_rule,
+  required: r.required,
+  validationStatus: r.validation_status,
+});
+
+export interface SyncRunRow {
+  id: string;
+  source_id: string;
+  trigger: SyncRun['trigger'];
+  status: SyncRun['status'];
+  started_at: string;
+  finished_at: string | null;
+  rows_read: number;
+  rows_upserted: number;
+  message: string | null;
+  error_message: string | null;
+}
+
+export const toSyncRun = (r: SyncRunRow): SyncRun => ({
+  id: r.id,
+  sourceId: r.source_id,
+  trigger: r.trigger,
+  status: r.status,
+  startedAt: r.started_at,
+  finishedAt: r.finished_at,
+  rowsRead: r.rows_read,
+  rowsUpserted: r.rows_upserted,
+  message: r.message,
+  errorMessage: r.error_message,
+});
+
+export interface ActivityRow {
+  id: string;
+  source_id: string | null;
+  year: number;
+  title: string;
+  start_date: string;
+  end_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  location: string;
+  category: string;
+  pic_names: string[];
+  pic_employee_ids: string[];
+  participants: string;
+  status: ActivityPlanItem['status'];
+  notes: string;
+  meeting_link: string | null;
+  document_link: string | null;
+  source_row_key: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export const toActivity = (r: ActivityRow): ActivityPlanItem => ({
+  id: r.id,
+  sourceId: r.source_id,
+  year: r.year,
+  title: r.title,
+  startDate: r.start_date,
+  endDate: r.end_date,
+  startTime: r.start_time ? r.start_time.slice(0, 5) : null,
+  endTime: r.end_time ? r.end_time.slice(0, 5) : null,
+  allDay: r.all_day,
+  location: r.location ?? '',
+  category: r.category ?? '',
+  picNames: r.pic_names ?? [],
+  picEmployeeIds: r.pic_employee_ids ?? [],
+  participants: r.participants ?? '',
+  status: r.status,
+  notes: r.notes ?? '',
+  meetingLink: r.meeting_link,
+  documentLink: r.document_link,
+  sourceRowKey: r.source_row_key,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
+
+export interface GoogleConnRow {
+  id: number;
+  email: string | null;
+  connected_at: string | null;
+  last_used_at: string | null;
+  token_status: 'AKTIF' | 'KEDALUWARSA' | 'DICABUT' | null;
+}

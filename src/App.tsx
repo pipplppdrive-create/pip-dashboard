@@ -18,6 +18,7 @@ import { getDataService } from '@/services';
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'));
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'));
 const BoardPage = lazy(() => import('@/features/board/BoardPage'));
+const PlanPage = lazy(() => import('@/features/plan/PlanPage'));
 const AdminPage = lazy(() => import('@/features/admin/AdminPage'));
 const UiGalleryPage = import.meta.env.DEV ? lazy(() => import('@/features/dev/UiGalleryPage')) : null;
 
@@ -118,6 +119,7 @@ export default function App() {
                   >
                     <Route path={ROUTES.dashboard} element={<DashboardPage />} />
                     <Route path={ROUTES.pekerjaan} element={<BoardPage />} />
+                    <Route path={ROUTES.rencana} element={<PlanPage />} />
                     <Route
                       path={`${ROUTES.admin}/*`}
                       element={

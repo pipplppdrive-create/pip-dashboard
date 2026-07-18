@@ -25,6 +25,16 @@ export const qk = {
   auditList: (filter: unknown) => ['audit', 'list', filter] as const,
   settings: () => ['settings'] as const,
   sessions: () => ['sessions'] as const,
+  activities: (year?: number) => ['activities', year ?? null] as const,
+  activityYears: () => ['activities', 'years'] as const,
+  activitySyncInfo: (year?: number) => ['activities', 'sync', year ?? null] as const,
+  sources: (opts?: { includeInactive?: boolean; includeDeleted?: boolean }) =>
+    ['integrations', 'sources', opts ?? {}] as const,
+  bindings: (sourceId: string) => ['integrations', 'bindings', sourceId] as const,
+  mappings: (bindingId: string) => ['integrations', 'mappings', bindingId] as const,
+  syncRuns: (sourceId?: string, limit?: number) =>
+    ['integrations', 'runs', sourceId ?? null, limit ?? null] as const,
+  googleStatus: () => ['integrations', 'google'] as const,
 } as const;
 
 export function useEmployees(includeInactive = false) {
@@ -117,5 +127,69 @@ export function useRecentActivity(limit = 15) {
   return useQuery({
     queryKey: qk.activity(limit),
     queryFn: () => getDataService().audit.recentActivity(limit),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rencana Kegiatan & Integrasi Spreadsheet
+// ---------------------------------------------------------------------------
+
+export function useActivities(year?: number) {
+  return useQuery({
+    queryKey: qk.activities(year),
+    queryFn: () => getDataService().activities.list(year ? { year } : undefined),
+  });
+}
+
+export function useActivityYears() {
+  return useQuery({
+    queryKey: qk.activityYears(),
+    queryFn: () => getDataService().activities.listYears(),
+    staleTime: 60_000,
+  });
+}
+
+export function useActivitySyncInfo(year?: number) {
+  return useQuery({
+    queryKey: qk.activitySyncInfo(year),
+    queryFn: () => getDataService().activities.syncInfo(year),
+  });
+}
+
+export function useSources(opts?: { includeInactive?: boolean; includeDeleted?: boolean }) {
+  return useQuery({
+    queryKey: qk.sources(opts),
+    queryFn: () => getDataService().integrations.listSources(opts),
+  });
+}
+
+export function useBindings(sourceId: string | null) {
+  return useQuery({
+    queryKey: qk.bindings(sourceId ?? ''),
+    queryFn: () => getDataService().integrations.listBindings(sourceId ?? ''),
+    enabled: sourceId !== null,
+  });
+}
+
+export function useMappings(bindingId: string | null) {
+  return useQuery({
+    queryKey: qk.mappings(bindingId ?? ''),
+    queryFn: () => getDataService().integrations.listMappings(bindingId ?? ''),
+    enabled: bindingId !== null,
+  });
+}
+
+export function useSyncRuns(sourceId?: string, limit?: number) {
+  return useQuery({
+    queryKey: qk.syncRuns(sourceId, limit),
+    queryFn: () => getDataService().integrations.listSyncRuns({ sourceId, limit }),
+  });
+}
+
+export function useGoogleStatus() {
+  return useQuery({
+    queryKey: qk.googleStatus(),
+    queryFn: () => getDataService().integrations.googleStatus(),
+    staleTime: 30_000,
   });
 }

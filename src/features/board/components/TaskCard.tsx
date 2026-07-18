@@ -1,6 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CalendarClock, CheckSquare2, MessageSquareText, Paperclip, Star } from 'lucide-react';
+import type { KeyboardEvent } from 'react';
 import { AvatarGroup } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { ProgressBar } from '@/components/ui/progress';
@@ -50,6 +51,15 @@ export function TaskCard({
   const overdue = !!task.dueDate && task.dueDate < today;
   const dueToday = task.dueDate === today;
 
+  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    listeners?.onKeyDown?.(e);
+    if (e.defaultPrevented) return;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onOpen(task.id);
+    }
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -63,12 +73,7 @@ export function TaskCard({
         tabIndex={0}
         aria-label={`Buka pekerjaan ${task.title}`}
         onClick={() => onOpen(task.id)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            onOpen(task.id);
-          }
-        }}
+        onKeyDown={handleKeyDown}
         className={cn(
           'group cursor-pointer rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition-shadow select-none',
           'hover:border-brand-300 hover:shadow-md',
