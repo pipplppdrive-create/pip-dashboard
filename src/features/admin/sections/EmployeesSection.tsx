@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, Pencil, UserPlus } from 'lucide-react';
+import { Camera, ChevronDown, ChevronUp, Pencil, Trash2, UserPlus } from 'lucide-react';
 import { ErrorState } from '@/components/feedback/error-state';
 import { LoadingBlock } from '@/components/feedback/loading-block';
 import { notify } from '@/components/feedback/toaster';
-import { Avatar, AVATAR_COLOR_KEYS, AVATAR_COLORS } from '@/components/ui/avatar';
+import { Avatar, AVATAR_COLOR_KEYS, AVATAR_COLORS, DefaultAvatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -12,15 +12,18 @@ import { Modal } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { processAvatarImage } from '@/lib/image';
 import { arrayMove, cn, initialsFromName } from '@/lib/utils';
 import { errorMessage } from '@/services/errors';
 import { getDataService } from '@/services';
 import type { Employee, EmployeeInput } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
-import { useEmployees } from '@/hooks/queries';
+import { useEmployeePhotos, useEmployees } from '@/hooks/queries';
 
 export function EmployeesSection() {
   const employeesQ = useEmployees(true);
+  const photosQ = useEmployeePhotos(employeesQ.data);
+  const photoUrls = photosQ.data ?? {};
   const [editing, setEditing] = useState<Employee | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const getCtx = useActorCtx();
@@ -68,8 +71,8 @@ export function EmployeesSection() {
   return (
     <Card>
       <CardHeader
-        title="Pegawai & PIC"
-        description="Master pegawai untuk pegawai pelaku & PIC. Pegawai dengan histori tidak dapat dihapus — gunakan nonaktif."
+        title="Pegawai"
+        description="Data pegawai, tag board, jabatan, dan foto profil. Pegawai dengan histori tidak dapat dihapus — gunakan nonaktif."
         actions={
           <Button
             onClick={() => {
@@ -85,7 +88,11 @@ export function EmployeesSection() {
       <ul className="divide-y divide-slate-100 p-4 pt-2">
         {employees.map((emp, i) => (
           <li key={emp.id} className="flex flex-wrap items-center gap-3 py-2.5">
-            <Avatar employee={emp} showInactive />
+            <Avatar
+              employee={emp}
+              showInactive
+              src={emp.avatarPath ? photoUrls[emp.avatarPath] : null}
+            />
             <div className="min-w-0 flex-1">
               <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
                 {emp.fullName}
@@ -140,7 +147,12 @@ export function EmployeesSection() {
           </li>
         ))}
       </ul>
-      <EmployeeDialog open={dialogOpen} onOpenChange={setDialogOpen} employee={editing} />
+      <EmployeeDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        employee={editing}
+        photoUrl={editing?.avatarPath ? photoUrls[editing.avatarPath] : undefined}
+      />
     </Card>
   );
 }
@@ -149,10 +161,13 @@ function EmployeeDialog({
   open,
   onOpenChange,
   employee,
+  photoUrl,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   employee: Employee | null;
+  /** URL foto saat ini (bila pegawai sudah punya foto). */
+  photoUrl?: string;
 }) {
   const [form, setForm] = useState<EmployeeInput>({
     fullName: '',
@@ -165,11 +180,47 @@ function EmployeeDialog({
   });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Foto: blob baru menunggu disimpan / tanda hapus; preview object URL lokal.
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const previewUrlRef = useRef<string | null>(null);
   const getCtx = useActorCtx();
   const queryClient = useQueryClient();
 
+  function clearPreview() {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  }
+
+  useEffect(() => () => clearPreview(), []);
+
+  async function handlePhotoFile(file: File) {
+    setPhotoBusy(true);
+    try {
+      const blob = await processAvatarImage(file);
+      clearPreview();
+      const url = URL.createObjectURL(blob);
+      previewUrlRef.current = url;
+      setPhotoBlob(blob);
+      setPhotoPreview(url);
+      setPhotoRemoved(false);
+    } catch (err) {
+      notify.error('Foto tidak dapat dipakai', errorMessage(err));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (open) {
+      clearPreview();
+      setPhotoBlob(null);
+      setPhotoPreview(null);
+      setPhotoRemoved(false);
       setForm(
         employee
           ? {
@@ -209,13 +260,19 @@ function EmployeeDialog({
     };
     setBusy(true);
     try {
+      let saved: Employee;
       if (employee) {
-        await getDataService().employees.update(employee.id, payload, ctx);
-        notify.success('Pegawai diperbarui.');
+        saved = await getDataService().employees.update(employee.id, payload, ctx);
       } else {
-        await getDataService().employees.create(payload, ctx);
-        notify.success('Pegawai ditambahkan.', payload.fullName);
+        saved = await getDataService().employees.create(payload, ctx);
       }
+      // Foto disimpan setelah data pegawai tersimpan.
+      if (photoBlob) {
+        await getDataService().employees.setPhoto(saved.id, photoBlob, ctx);
+      } else if (photoRemoved && employee?.avatarPath) {
+        await getDataService().employees.removePhoto(saved.id, ctx);
+      }
+      notify.success(employee ? 'Pegawai diperbarui.' : 'Pegawai ditambahkan.', payload.fullName);
       await queryClient.invalidateQueries({ queryKey: ['employees'] });
       onOpenChange(false);
     } catch (err) {
@@ -224,6 +281,8 @@ function EmployeeDialog({
       setBusy(false);
     }
   }
+
+  const showPhoto = photoPreview ?? (photoRemoved ? null : photoUrl ?? null);
 
   return (
     <Modal
@@ -242,6 +301,60 @@ function EmployeeDialog({
       }
     >
       <div className="space-y-4">
+        <Field
+          label="Foto profil"
+          hint="Otomatis dipotong 1:1, maks 512×512 px, disimpan ≤300 KB. Tanpa foto → avatar bawaan."
+        >
+          <div className="flex items-center gap-3">
+            <span className="inline-flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
+              {showPhoto ? (
+                <img src={showPhoto} alt="Pratinjau foto pegawai" className="size-full object-cover" />
+              ) : (
+                <DefaultAvatar
+                  seed={form.displayName || form.fullName || '?'}
+                  color={form.color}
+                />
+              )}
+            </span>
+            <label className="inline-flex">
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                aria-label="Unggah foto pegawai"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void handlePhotoFile(f);
+                  e.target.value = '';
+                }}
+              />
+              <span
+                className={cn(
+                  'pressable inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50',
+                  photoBusy && 'pointer-events-none opacity-60',
+                )}
+              >
+                <Camera className="size-3.5" aria-hidden />
+                {photoBusy ? 'Memproses…' : showPhoto ? 'Ganti foto' : 'Unggah foto'}
+              </span>
+            </label>
+            {showPhoto && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  clearPreview();
+                  setPhotoBlob(null);
+                  setPhotoPreview(null);
+                  setPhotoRemoved(true);
+                }}
+              >
+                <Trash2 className="size-3.5" aria-hidden />
+                Hapus foto
+              </Button>
+            )}
+          </div>
+        </Field>
         <Field label="Nama lengkap" required error={error ?? undefined}>
           <Input
             value={form.fullName}

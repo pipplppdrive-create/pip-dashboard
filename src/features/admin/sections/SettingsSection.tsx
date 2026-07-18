@@ -325,7 +325,7 @@ export function SettingsSection() {
           description={
             getDataService().mode === 'local'
               ? 'Mode lokal: backup berupa berkas JSON berisi seluruh data perangkat ini.'
-              : 'Backup database dikelola di backend; tombol ini mengekspor salinan JSON.'
+              : 'Unduh salinan data aplikasi sebagai berkas cadangan.'
           }
         />
         <div className="flex flex-wrap items-center gap-3 p-4 pt-3">

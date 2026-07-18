@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   ShieldCheck,
   SquareKanban,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import type { Role } from '@/services/types';
@@ -17,14 +18,15 @@ export interface NavItem {
 }
 
 /**
- * Navigasi terkunci sesuai spesifikasi (Docs/09 §G):
- * USER  = Dashboard, Pekerjaan, Rencana Kegiatan.
+ * Navigasi terkunci sesuai spesifikasi:
+ * USER  = Dashboard, Pekerjaan, Rencana Kegiatan, Daftar Pegawai.
  * ADMIN = + Admin. Menu Admin tidak pernah tampil untuk USER.
  */
 export const NAV_ITEMS: NavItem[] = [
   { to: ROUTES.dashboard, label: 'Dashboard', icon: LayoutDashboard, roles: ['USER', 'ADMIN'] },
   { to: ROUTES.pekerjaan, label: 'Pekerjaan', icon: SquareKanban, roles: ['USER', 'ADMIN'] },
   { to: ROUTES.rencana, label: 'Rencana Kegiatan', icon: CalendarRange, roles: ['USER', 'ADMIN'] },
+  { to: ROUTES.pegawai, label: 'Daftar Pegawai', icon: Users, roles: ['USER', 'ADMIN'] },
   { to: ROUTES.admin, label: 'Admin', icon: ShieldCheck, roles: ['ADMIN'] },
 ];
 

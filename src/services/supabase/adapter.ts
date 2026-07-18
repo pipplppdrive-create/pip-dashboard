@@ -492,6 +492,99 @@ export const supabaseAdapter: DataService = {
         after: { orderedIds },
       });
     },
+    async setPhoto(id, photo, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      if (photo.size <= 0) throw new ValidationError('Berkas foto kosong.');
+      if (photo.size > 300 * 1024) {
+        throw new ValidationError('Ukuran foto maksimal 300 KB setelah kompresi.');
+      }
+      const sb = getSupabase();
+      const { data: prevRow, error: prevErr } = await sb
+        .from('employees')
+        .select()
+        .eq('id', id)
+        .single();
+      if (prevErr || !prevRow) wrap(prevErr, 'Pegawai tidak ditemukan');
+      const prev = toEmployee(prevRow as EmployeeRow);
+      const ext = photo.type === 'image/png' ? 'png' : photo.type === 'image/jpeg' ? 'jpg' : 'webp';
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await sb.storage.from('employee-photos').upload(path, photo, {
+        contentType: photo.type || 'image/webp',
+        upsert: false,
+      });
+      if (upErr) throw new StorageError(`Gagal mengunggah foto: ${upErr.message}`);
+      const { data, error } = await sb
+        .from('employees')
+        .update({ avatar_path: path, avatar_updated_at: nowISO(), updated_at: nowISO() })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error || !data) {
+        await sb.storage.from('employee-photos').remove([path]).catch(() => undefined);
+        wrap(error, 'Gagal menyimpan foto pegawai');
+      }
+      // Hapus foto lama setelah foto baru tersimpan (aman bila gagal).
+      if (prev.avatarPath && prev.avatarPath !== path) {
+        await sb.storage.from('employee-photos').remove([prev.avatarPath]).catch(() => undefined);
+      }
+      const emp = toEmployee(data as EmployeeRow);
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'EMPLOYEE',
+        entityId: id,
+        entityLabel: `Foto profil ${emp.fullName} diperbarui`,
+        employeeId,
+        after: { avatarPath: path },
+      });
+      return emp;
+    },
+    async removePhoto(id, ctx) {
+      await requireAdmin();
+      const employeeId = await assertActor(ctx);
+      const sb = getSupabase();
+      const { data: prevRow, error: prevErr } = await sb
+        .from('employees')
+        .select()
+        .eq('id', id)
+        .single();
+      if (prevErr || !prevRow) wrap(prevErr, 'Pegawai tidak ditemukan');
+      const prev = toEmployee(prevRow as EmployeeRow);
+      const { data, error } = await sb
+        .from('employees')
+        .update({ avatar_path: null, avatar_updated_at: nowISO(), updated_at: nowISO() })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error || !data) wrap(error, 'Gagal menghapus foto pegawai');
+      if (prev.avatarPath) {
+        await sb.storage.from('employee-photos').remove([prev.avatarPath]).catch(() => undefined);
+      }
+      const emp = toEmployee(data as EmployeeRow);
+      await auditWrite({
+        action: 'UPDATE',
+        entityType: 'EMPLOYEE',
+        entityId: id,
+        entityLabel: `Foto profil ${emp.fullName} dihapus`,
+        employeeId,
+        before: { avatarPath: prev.avatarPath },
+      });
+      return emp;
+    },
+    async photoUrls(paths) {
+      await requireRole();
+      const unique = [...new Set(paths.filter(Boolean))];
+      if (unique.length === 0) return {};
+      const { data, error } = await getSupabase()
+        .storage.from('employee-photos')
+        .createSignedUrls(unique, 3600);
+      if (error) return {};
+      const map: Record<string, string> = {};
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl && !item.error) map[item.path] = item.signedUrl;
+      }
+      return map;
+    },
   },
 
   // ----------------------------------------------------------------- board
@@ -684,8 +777,14 @@ export const supabaseAdapter: DataService = {
           due_date: input.dueDate ?? null,
           progress_mode: input.progressMode ?? 'MANUAL',
           manual_progress: input.manualProgress ?? 0,
-          pic_main_id: input.picMainId ?? null,
-          pic_ids: (input.picIds ?? []).filter((p) => p !== input.picMainId),
+          ...(() => {
+            const mains = input.picMainIds ?? (input.picMainId ? [input.picMainId] : []);
+            return {
+              pic_main_ids: mains,
+              pic_main_id: mains[0] ?? null,
+              pic_ids: (input.picIds ?? []).filter((p) => !mains.includes(p)),
+            };
+          })(),
           checklist: input.checklist ?? [],
           is_focus: input.isFocus ?? false,
           sort_order: 9999,
@@ -724,8 +823,15 @@ export const supabaseAdapter: DataService = {
       if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
       if (patch.progressMode !== undefined) row.progress_mode = patch.progressMode;
       if (patch.manualProgress !== undefined) row.manual_progress = patch.manualProgress;
-      if (patch.picMainId !== undefined) row.pic_main_id = patch.picMainId;
-      if (patch.picIds !== undefined) row.pic_ids = patch.picIds;
+      if (patch.picMainIds !== undefined || patch.picMainId !== undefined) {
+        const mains = patch.picMainIds ?? (patch.picMainId ? [patch.picMainId] : []);
+        row.pic_main_ids = mains;
+        row.pic_main_id = mains[0] ?? null;
+      }
+      if (patch.picIds !== undefined) {
+        const mains = (row.pic_main_ids as string[] | undefined) ?? null;
+        row.pic_ids = mains ? patch.picIds.filter((p) => !mains.includes(p)) : patch.picIds;
+      }
       if (patch.checklist !== undefined) row.checklist = patch.checklist;
       if (patch.isFocus !== undefined) row.is_focus = patch.isFocus;
       const { data, error } = await getSupabase()

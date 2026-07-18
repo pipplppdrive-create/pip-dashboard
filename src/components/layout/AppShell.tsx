@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { PanelLeftClose, PanelLeftOpen, PanelRightOpen } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { navItemsForRole } from '@/lib/nav';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -100,16 +100,37 @@ export function AppShell({
         aria-label="Navigasi utama"
         aria-hidden={hidden || undefined}
       >
-        <div className={cn('flex items-center gap-3 pt-5 pb-6', compact ? 'justify-center px-2' : 'px-5')}>
+        <div
+          className={cn(
+            'pt-4 pb-5',
+            compact ? 'flex flex-col items-center gap-2 px-2' : 'flex items-center gap-3 px-4',
+          )}
+        >
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-2xl bg-(image:--gradient-brand-soft)">
             <BrandMark logoDataUrl={logoDataUrl} className="size-7" />
           </span>
           {!compact && (
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] leading-tight font-bold text-slate-900">{appName}</p>
               <p className="text-[11px] font-medium text-slate-500">Puslapdik · Kemendikdasmen</p>
             </div>
           )}
+          {/* SATU-SATUNYA kontrol sidebar: expanded → compact → hidden → expanded.
+              Saat hidden, kontrol yang sama muncul sebagai tombol melayang kiri-atas. */}
+          <Tooltip content={compact ? 'Sembunyikan sidebar' : 'Perkecil sidebar'} side="right">
+            <button
+              type="button"
+              onClick={() => setSidebarState(compact ? 'hidden' : 'compact')}
+              aria-label={compact ? 'Sembunyikan sidebar' : 'Perkecil sidebar'}
+              className="pressable inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-brand-50 hover:text-brand-700"
+            >
+              {compact ? (
+                <PanelLeftOpen className="size-5 rotate-180" aria-hidden />
+              ) : (
+                <PanelLeftClose className="size-5" aria-hidden />
+              )}
+            </button>
+          </Tooltip>
         </div>
 
         <nav className="flex-1 space-y-1.5 px-3" aria-label="Menu">
@@ -153,52 +174,26 @@ export function AppShell({
           })}
         </nav>
 
-        {/* Kontrol mode sidebar */}
-        <div className={cn('flex gap-1.5 px-3 py-3', compact ? 'flex-col items-center' : 'items-center')}>
-          <Tooltip content={compact ? 'Perbesar sidebar' : 'Perkecil sidebar'} side="right">
-            <button
-              type="button"
-              onClick={() => setSidebarState(compact ? 'expanded' : 'compact')}
-              aria-label={compact ? 'Perbesar sidebar' : 'Perkecil sidebar'}
-              className="pressable inline-flex size-11 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-brand-50 hover:text-brand-700"
-            >
-              {compact ? (
-                <PanelRightOpen className="size-5" aria-hidden />
-              ) : (
-                <PanelLeftClose className="size-5" aria-hidden />
-              )}
-            </button>
-          </Tooltip>
-          <Tooltip content="Sembunyikan sidebar" side="right">
-            <button
-              type="button"
-              onClick={() => setSidebarState('hidden')}
-              aria-label="Sembunyikan sidebar"
-              className="pressable inline-flex size-11 cursor-pointer items-center justify-center rounded-xl text-slate-500 hover:bg-brand-50 hover:text-brand-700"
-            >
-              <PanelLeftOpen className="size-5 rotate-180" aria-hidden />
-            </button>
-          </Tooltip>
-          {!compact && (
-            <p className="ml-auto text-[10px] leading-tight text-slate-400">
-              Program
-              <br />
-              Indonesia Pintar
-            </p>
-          )}
-        </div>
+        {/* Footer sidebar */}
+        {!compact && (
+          <p className="px-5 py-3 text-[10px] leading-tight text-slate-400">
+            Program Indonesia Pintar
+          </p>
+        )}
       </aside>
 
-      {/* Tombol buka sidebar — selalu terlihat saat hidden, target besar (TV) */}
+      {/* Kontrol sidebar yang sama saat hidden — koordinat konsisten kiri-atas */}
       {hidden && (
-        <button
-          type="button"
-          onClick={() => setSidebarState('expanded')}
-          aria-label="Tampilkan sidebar"
-          className="pressable fixed top-3 left-3 z-50 hidden size-12 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white/95 text-brand-700 shadow-(--shadow-card) hover:bg-brand-50 lg:inline-flex"
-        >
-          <PanelLeftOpen className="size-6" aria-hidden />
-        </button>
+        <Tooltip content="Tampilkan sidebar" side="right">
+          <button
+            type="button"
+            onClick={() => setSidebarState('expanded')}
+            aria-label="Tampilkan sidebar"
+            className="pressable fixed top-3 left-3 z-50 hidden size-12 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white/95 text-brand-700 shadow-(--shadow-card) hover:bg-brand-50 lg:inline-flex"
+          >
+            <PanelLeftOpen className="size-6" aria-hidden />
+          </button>
+        </Tooltip>
       )}
 
       {/* App bar — mobile/tablet */}
@@ -223,10 +218,16 @@ export function AppShell({
         <h1 className="text-xl font-bold tracking-tight text-slate-900">
           {active?.label ?? appName}
         </h1>
-        <div className="flex items-center gap-3">
-          <p className="tnum text-sm font-medium text-slate-500" aria-label="Waktu saat ini">
-            {format(now, 'EEEE, d MMMM yyyy · HH.mm', { locale: localeId })}
-          </p>
+        <div className="flex items-center gap-4">
+          {/* Jam & tanggal — kontras dan mudah dibaca dari TV */}
+          <div className="text-right leading-tight" aria-label="Waktu saat ini" role="timer">
+            <p className="tnum text-xl font-extrabold tracking-tight text-slate-800 2xl:text-2xl">
+              {format(now, 'HH.mm')}
+            </p>
+            <p className="text-[11px] font-semibold text-slate-500 2xl:text-xs">
+              {format(now, 'EEEE, d MMMM yyyy', { locale: localeId })}
+            </p>
+          </div>
           {headerExtra}
         </div>
       </header>
@@ -264,7 +265,11 @@ export function AppShell({
                     <item.icon aria-hidden className="size-5" />
                   </span>
                   <span className="max-w-20 truncate">
-                    {item.label === 'Rencana Kegiatan' ? 'Rencana' : item.label}
+                    {item.label === 'Rencana Kegiatan'
+                      ? 'Rencana'
+                      : item.label === 'Daftar Pegawai'
+                        ? 'Pegawai'
+                        : item.label}
                   </span>
                 </>
               )}

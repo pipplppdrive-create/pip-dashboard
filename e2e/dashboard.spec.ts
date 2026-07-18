@@ -37,30 +37,40 @@ test.describe('dashboard', () => {
     await expect(page.getByText('10.400.000 siswa')).toBeVisible();
   });
 
-  test('ringkasan pekerjaan dinamis mengikuti step dan membuka board dengan filter', async ({
+  test('kartu statistik pekerjaan mengikuti step dan membuka board dengan filter', async ({
     page,
   }) => {
     await loginAsUser(page);
-    const ringkasan = page.getByRole('button', { name: /Buka board dengan filter step/ });
-    await expect(ringkasan).toHaveCount(5); // step default seed
+    const stepCards = page.getByRole('button', { name: /Buka board dengan filter step/ });
+    await expect(stepCards).toHaveCount(5); // step default seed
     await expect(
       page.getByRole('button', { name: 'Buka board dengan filter step On Progress' }),
+    ).toBeVisible();
+    // Kartu ringkasan eksekutif lain
+    await expect(page.getByRole('button', { name: 'Buka menu Pekerjaan' })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Buka ringkasan pekerjaan yang perlu perhatian' }),
     ).toBeVisible();
     await page.getByRole('button', { name: 'Buka board dengan filter step To Do' }).click();
     await expect(page).toHaveURL(/\/pekerjaan\?step=/);
   });
 
-  test('Perlu Perhatian, Fokus Hari Ini, dan Aktivitas terbaru berfungsi', async ({ page }) => {
+  test('kartu Perlu Perhatian membuka Pekerjaan › Ringkasan dengan rincian lengkap', async ({
+    page,
+  }) => {
     await loginAsUser(page);
+    // Detail (Perlu Perhatian, Fokus, Aktivitas) kini berada di menu Pekerjaan.
+    await page
+      .getByRole('button', { name: 'Buka ringkasan pekerjaan yang perlu perhatian' })
+      .click();
+    await expect(page).toHaveURL(/\/pekerjaan\?view=ringkasan/);
     await expect(page.getByText('Perlu Perhatian')).toBeVisible();
     // Seed: rekonsiliasi Juni melewati tenggat & terhambat
     await expect(page.getByText('Melewati tenggat').first()).toBeVisible();
     await expect(page.getByText('Fokus Hari Ini')).toBeVisible();
     await expect(page.getByText('Ditandai fokus').first()).toBeVisible();
     await expect(page.getByText('Aktivitas Terbaru')).toBeVisible();
-    // Feed aktivitas kini terisi untuk USER (migrasi 0005 membuka baca audit
-    // terbatas). Verba bisa dari pembaruan penyaluran (seed) atau aktivitas
-    // pekerjaan uji; pastikan feed terisi (bukan empty state).
+    // Feed aktivitas terisi (bukan empty state).
     await expect(
       page
         .getByText(/memperbarui data penyaluran|membuat|memindahkan|memperbarui|menyelesaikan/)

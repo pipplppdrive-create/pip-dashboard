@@ -17,6 +17,7 @@ function makeTask(partial: Partial<Task>): Task {
     dueDate: null,
     progressMode: 'MANUAL',
     manualProgress: 0,
+    picMainIds: [],
     picMainId: null,
     picIds: [],
     checklist: [],
@@ -62,11 +63,15 @@ describe('taskMatchesFilters', () => {
     expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, durationType: 'JANGKA_PENDEK' })).toBe(false);
   });
 
-  it('filter PIC mencakup PIC utama dan tambahan', () => {
-    const t = makeTask({ picMainId: 'e1', picIds: ['e2'] });
-    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picId: 'e1' })).toBe(true);
-    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picId: 'e2' })).toBe(true);
-    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picId: 'e3' })).toBe(false);
+  it('filter PIC mencakup PIC utama (multi) dan tambahan', () => {
+    const t = makeTask({ picMainIds: ['e1', 'e4'], picMainId: 'e1', picIds: ['e2'] });
+    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picIds: ['e1'] })).toBe(true);
+    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picIds: ['e4'] })).toBe(true);
+    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picIds: ['e2'] })).toBe(true);
+    expect(taskMatchesFilters(t, { ...EMPTY_FILTERS, picIds: ['e3'] })).toBe(false);
+    // Data lama: hanya picMainId terisi (picMainIds kosong)
+    const lama = makeTask({ picMainIds: [], picMainId: 'e9', picIds: [] });
+    expect(taskMatchesFilters(lama, { ...EMPTY_FILTERS, picIds: ['e9'] })).toBe(true);
   });
 });
 

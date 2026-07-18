@@ -109,8 +109,11 @@ export function TaskDetailDialog({
 
   const category = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
   const taskLabels = labels.filter((l) => task.labelIds.includes(l.id));
-  const picMain = task.picMainId ? byId.get(task.picMainId) : null;
-  const picOthers = task.picIds.map((id) => byId.get(id)).filter((e): e is Employee => !!e);
+  const picMains = task.picMainIds.map((id) => byId.get(id)).filter((e): e is Employee => !!e);
+  const picOthers = task.picIds
+    .filter((id) => !task.picMainIds.includes(id))
+    .map((id) => byId.get(id))
+    .filter((e): e is Employee => !!e);
   const progress = taskProgress(task);
   const cl = checklistStats(task.checklist);
 
@@ -306,14 +309,17 @@ export function TaskDetailDialog({
           <div className="sm:col-span-2">
             <p className="text-[11px] font-bold text-slate-500 uppercase">PIC</p>
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              {picMain && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white py-0.5 pr-2.5 pl-0.5 shadow-sm">
-                  <Avatar employee={picMain} size="sm" showInactive />
+              {picMains.map((e) => (
+                <span
+                  key={e.id}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white py-0.5 pr-2.5 pl-0.5 shadow-sm"
+                >
+                  <Avatar employee={e} size="sm" showInactive />
                   <span className="text-xs font-bold text-slate-700">
-                    {picMain.displayName} · utama
+                    {e.displayName} · utama
                   </span>
                 </span>
-              )}
+              ))}
               {picOthers.map((e) => (
                 <span
                   key={e.id}
@@ -323,7 +329,7 @@ export function TaskDetailDialog({
                   <span className="text-xs font-semibold text-slate-600">{e.displayName}</span>
                 </span>
               ))}
-              {!picMain && picOthers.length === 0 && (
+              {picMains.length === 0 && picOthers.length === 0 && (
                 <span className="text-xs text-slate-400 italic">Belum ada PIC</span>
               )}
             </div>

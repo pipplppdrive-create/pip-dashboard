@@ -28,6 +28,8 @@ import {
 } from '@/hooks/queries';
 import { useQuery } from '@tanstack/react-query';
 import { ArchiveList } from './components/ArchiveList';
+import { BoardSummary } from './components/BoardSummary';
+import { PicPicker } from './components/PicPicker';
 import { DeleteStepDialog } from './components/DeleteStepDialog';
 import { DeleteTaskDialog } from './components/DeleteTaskDialog';
 import { KanbanBoard } from './components/KanbanBoard';
@@ -72,8 +74,12 @@ export default function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepFilter = searchParams.get('step');
   const openTaskId = searchParams.get('task');
+  // Tampilan halaman: board (default) | ringkasan | arsip — dapat ditautkan
+  // langsung dari Dashboard lewat ?view=ringkasan.
+  const viewParam = searchParams.get('view');
+  const view: 'board' | 'ringkasan' | 'arsip' =
+    viewParam === 'ringkasan' ? 'ringkasan' : viewParam === 'arsip' ? 'arsip' : 'board';
 
-  const [tab, setTab] = useState<'aktif' | 'arsip'>('aktif');
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -155,6 +161,18 @@ export default function BoardPage() {
         const next = new URLSearchParams(prev);
         next.delete('step');
         return next;
+      },
+      { replace: true },
+    );
+  }
+
+  function setView(next: 'board' | 'ringkasan' | 'arsip') {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next === 'board') params.delete('view');
+        else params.set('view', next);
+        return params;
       },
       { replace: true },
     );
@@ -265,15 +283,16 @@ export default function BoardPage() {
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Toggle tampilan Aktif/Arsip (arsip sebagai tab/filter di halaman ini) */}
+          {/* Tampilan halaman: Board (kanban) | Ringkasan | Arsip */}
           <div
             role="group"
-            aria-label="Tampilan board"
+            aria-label="Tampilan pekerjaan"
             className="inline-flex items-center gap-1 rounded-xl bg-slate-200/60 p-1"
           >
             {(
               [
-                { value: 'aktif', label: 'Aktif' },
+                { value: 'board', label: 'Board' },
+                { value: 'ringkasan', label: 'Ringkasan' },
                 {
                   value: 'arsip',
                   label: `Arsip (${tasks.filter((t) => t.archivedAt && !t.deletedAt).length})`,
@@ -283,11 +302,11 @@ export default function BoardPage() {
               <button
                 key={opt.value}
                 type="button"
-                aria-pressed={tab === opt.value}
-                onClick={() => setTab(opt.value)}
+                aria-pressed={view === opt.value}
+                onClick={() => setView(opt.value)}
                 className={cn(
-                  'inline-flex cursor-pointer items-center rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors',
-                  tab === opt.value
+                  'pressable inline-flex min-h-9 cursor-pointer items-center rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors',
+                  view === opt.value
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900',
                 )}
@@ -296,6 +315,7 @@ export default function BoardPage() {
               </button>
             ))}
           </div>
+          {view === 'board' && (
           <div className="relative">
             <Search
               className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
@@ -309,6 +329,8 @@ export default function BoardPage() {
               className="h-9 w-48 pl-9 lg:w-64"
             />
           </div>
+          )}
+          {view === 'board' && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9">
@@ -365,19 +387,12 @@ export default function BoardPage() {
                 </Select>
               </Field>
               <Field label="PIC">
-                <Select
-                  value={filters.picId ?? ''}
-                  onChange={(e) => setFilters((f) => ({ ...f, picId: e.target.value || null }))}
-                >
-                  <option value="">Semua PIC</option>
-                  {employees
-                    .filter((e) => e.active)
-                    .map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.fullName}
-                      </option>
-                    ))}
-                </Select>
+                <PicPicker
+                  employees={employees}
+                  value={filters.picIds}
+                  onChange={(ids) => setFilters((f) => ({ ...f, picIds: ids }))}
+                  placeholder="Semua PIC"
+                />
               </Field>
               <Field label="Jenis durasi">
                 <Select
@@ -409,6 +424,7 @@ export default function BoardPage() {
               )}
             </PopoverContent>
           </Popover>
+          )}
           <Button
             size="sm"
             className="h-9"
@@ -444,7 +460,9 @@ export default function BoardPage() {
             <Skeleton key={i} className="h-96 w-72 shrink-0 rounded-2xl" />
           ))}
         </div>
-      ) : tab === 'arsip' ? (
+      ) : view === 'ringkasan' ? (
+        <BoardSummary steps={steps} tasks={tasks} employees={employees} />
+      ) : view === 'arsip' ? (
         <Card>
           <ArchiveList
             tasks={tasks}

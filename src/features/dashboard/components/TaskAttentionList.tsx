@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/format';
 import { taskProgress } from '@/lib/progress';
 import { ROUTES } from '@/lib/routes';
 import type { Employee, Task } from '@/services/types';
+import { taskPicIds } from '@/features/board/lib';
 import type { AttentionReason } from '../lib';
 
 export interface AttentionItem {
@@ -44,8 +45,7 @@ export function TaskAttentionList({
   return (
     <ul className="divide-y divide-slate-100">
       {shown.map(({ task, reasons, extraBadge }) => {
-        const pics = [task.picMainId, ...task.picIds]
-          .filter((id): id is string => !!id)
+        const pics = taskPicIds(task)
           .map((id) => byId.get(id))
           .filter((e): e is Employee => !!e);
         const progress = taskProgress(task);

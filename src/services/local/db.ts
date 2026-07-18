@@ -145,11 +145,35 @@ export function resetSeedMemo(): void {
 // Akses koleksi bertipe
 // ---------------------------------------------------------------------------
 
+/** Normalisasi data tersimpan lama (pra-foto & pra-multi-PIC-utama). */
+function normalizeEmployee(e: Employee): Employee {
+  return {
+    ...e,
+    avatarPath: e.avatarPath ?? null,
+    avatarUpdatedAt: e.avatarUpdatedAt ?? null,
+  };
+}
+
+function normalizeTask(t: Task): Task {
+  const mains =
+    t.picMainIds && t.picMainIds.length > 0
+      ? t.picMainIds
+      : t.picMainId
+        ? [t.picMainId]
+        : [];
+  return {
+    ...t,
+    picMainIds: mains,
+    picMainId: mains[0] ?? null,
+    picIds: (t.picIds ?? []).filter((id) => !mains.includes(id)),
+  };
+}
+
 export const db = {
-  employees: () => readCollection<Employee[]>(COL.employees, []),
+  employees: () => readCollection<Employee[]>(COL.employees, []).map(normalizeEmployee),
   board: () => readCollection<BoardInfo | null>(COL.board, null),
   steps: () => readCollection<Step[]>(COL.steps, []),
-  tasks: () => readCollection<Task[]>(COL.tasks, []),
+  tasks: () => readCollection<Task[]>(COL.tasks, []).map(normalizeTask),
   comments: () => readCollection<TaskComment[]>(COL.comments, []),
   attachments: () => readCollection<Attachment[]>(COL.attachments, []),
   categories: () => readCollection<Category[]>(COL.categories, []),

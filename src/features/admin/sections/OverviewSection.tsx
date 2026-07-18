@@ -3,8 +3,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatRelative } from '@/lib/format';
-import { getDataMode } from '@/services';
-import { isSupabaseConfigured } from '@/services/supabase/client';
 import {
   useEmployees,
   useGoogleStatus,
@@ -56,12 +54,11 @@ function StatusRow({
 }
 
 /**
- * Ringkasan Admin (Docs/09 §M.1) — status integrasi & kesehatan aplikasi.
- * Nilai environment TIDAK pernah ditampilkan — hanya status terisi/kosong.
+ * Ringkasan Admin — status OPERASIONAL yang relevan bagi admin aplikasi
+ * (bukan pengelola infrastruktur): koneksi Google, sinkronisasi spreadsheet,
+ * isi data, dan hal yang perlu ditindaklanjuti.
  */
 export function OverviewSection() {
-  const mode = getDataMode();
-  const supabaseReady = isSupabaseConfigured();
   const { data: google } = useGoogleStatus();
   const { data: sources } = useSources({ includeInactive: true });
   const { data: runs } = useSyncRuns(undefined, 1);
@@ -76,40 +73,29 @@ export function OverviewSection() {
   const activeEmployees = (employees ?? []).filter((e) => e.active).length;
   const activeTasks = (tasks ?? []).length;
 
-  const envRows: Array<{ label: string; set: boolean }> = [
-    { label: 'VITE_DATA_MODE', set: Boolean(import.meta.env.VITE_DATA_MODE) },
-    { label: 'VITE_SUPABASE_URL', set: Boolean(import.meta.env.VITE_SUPABASE_URL) },
-    { label: 'VITE_SUPABASE_ANON_KEY', set: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY) },
-  ];
-
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Card>
-        <CardHeader title="Backend & Integrasi" description="Status koneksi layanan inti" />
+        <CardHeader
+          title="Status Integrasi"
+          description="Koneksi Google dan sinkronisasi sumber spreadsheet"
+        />
         <ul className="divide-y divide-slate-100 px-4 pb-2">
           <StatusRow
-            label="Supabase"
-            detail={
-              mode === 'supabase'
-                ? 'Mode produksi — data dari Postgres + Realtime.'
-                : 'Mode lokal — data contoh tersimpan di perangkat ini.'
-            }
-            value={mode === 'supabase' ? 'Terhubung' : supabaseReady ? 'Siap (mode lokal)' : 'Belum dikonfigurasi'}
-            tone={mode === 'supabase' ? 'ok' : supabaseReady ? 'warn' : 'off'}
-          />
-          <StatusRow
-            label="Google OAuth"
+            label="Akun Google"
             detail={
               google?.connected
-                ? `Akun terhubung: ${google.email ?? '—'}${google.connectedAt ? ` · sejak ${formatRelative(google.connectedAt)}` : ''}`
-                : 'Satu akun Google Admin dipakai membaca seluruh spreadsheet.'
+                ? `Terhubung sebagai ${google.email ?? '—'}${google.connectedAt ? ` · sejak ${formatRelative(google.connectedAt)}` : ''}`
+                : 'Satu akun Google dipakai untuk membaca seluruh spreadsheet.'
             }
             value={
               google?.connected
-                ? (google.tokenStatus ?? 'AKTIF')
+                ? google.tokenStatus === 'AKTIF'
+                  ? 'Terhubung'
+                  : 'Perlu login ulang'
                 : google?.configured
                   ? 'Belum terhubung'
-                  : 'Belum dikonfigurasi'
+                  : 'Belum disiapkan'
             }
             tone={google?.connected ? (google.tokenStatus === 'AKTIF' ? 'ok' : 'warn') : 'off'}
           />
@@ -117,8 +103,8 @@ export function OverviewSection() {
             label="Sumber spreadsheet"
             detail={
               failing.length > 0
-                ? `${failing.length} sumber berstatus gagal/perlu validasi.`
-                : 'Progres penyaluran & Rencana Kegiatan dibaca read-only.'
+                ? `${failing.length} sumber perlu ditindaklanjuti (gagal/perlu validasi).`
+                : 'Data penyaluran & Rencana Kegiatan dibaca dari spreadsheet.'
             }
             value={`${activeSources.length} aktif`}
             tone={failing.length > 0 ? 'warn' : activeSources.length > 0 ? 'ok' : 'off'}
@@ -142,52 +128,33 @@ export function OverviewSection() {
             tone={lastRun ? (lastRun.status === 'BERHASIL' ? 'ok' : 'warn') : 'off'}
           />
           <StatusRow
-            label="Realtime"
-            detail={
-              mode === 'supabase'
-                ? 'Supabase Realtime — perubahan tampil tanpa reload.'
-                : 'BroadcastChannel antar-tab (mode lokal).'
-            }
+            label="Pembaruan otomatis"
+            detail="Perubahan data tampil langsung di seluruh perangkat tanpa muat ulang."
             value="Aktif"
             tone="ok"
           />
         </ul>
       </Card>
 
-      <div className="space-y-4">
-        <Card>
-          <CardHeader title="Data Aplikasi" description="Ringkasan isi master data" />
-          <dl className="grid grid-cols-2 gap-3 p-4">
-            <div className="rounded-xl bg-(image:--gradient-brand-soft) p-3">
-              <dt className="text-xs font-semibold text-slate-600">Pegawai aktif</dt>
-              <dd className="tnum text-2xl font-extrabold text-slate-900">{activeEmployees}</dd>
-            </div>
-            <div className="rounded-xl bg-(image:--gradient-brand-soft) p-3">
-              <dt className="text-xs font-semibold text-slate-600">Pekerjaan aktif</dt>
-              <dd className="tnum text-2xl font-extrabold text-slate-900">{activeTasks}</dd>
-            </div>
-          </dl>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Environment Variable"
-            description="Hanya status terisi/kosong — nilai rahasia tidak pernah ditampilkan."
-          />
-          <ul className="divide-y divide-slate-100 px-4 pb-2">
-            {envRows.map((row) => (
-              <li key={row.label} className="flex items-center justify-between py-2.5">
-                <code className="text-xs font-semibold text-slate-600">{row.label}</code>
-                <Badge tone={row.set ? 'success' : 'neutral'}>{row.set ? 'Terisi' : 'Kosong'}</Badge>
-              </li>
-            ))}
-            <li className="py-2.5 text-xs leading-relaxed text-slate-400">
-              Kredensial server (service role, Google client secret, webhook secret) hanya berada
-              di environment server — tidak pernah dikirim ke browser.
-            </li>
-          </ul>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader title="Isi Aplikasi" description="Ringkasan data yang dikelola" />
+        <dl className="grid grid-cols-2 gap-3 p-4">
+          <div className="rounded-xl bg-(image:--gradient-brand-soft) p-3">
+            <dt className="text-xs font-semibold text-slate-600">Pegawai aktif</dt>
+            <dd className="tnum text-2xl font-extrabold text-slate-900">{activeEmployees}</dd>
+          </div>
+          <div className="rounded-xl bg-(image:--gradient-brand-soft) p-3">
+            <dt className="text-xs font-semibold text-slate-600">Pekerjaan aktif</dt>
+            <dd className="tnum text-2xl font-extrabold text-slate-900">{activeTasks}</dd>
+          </div>
+        </dl>
+        {failing.length > 0 && (
+          <p className="px-4 pb-4 text-xs leading-relaxed text-warning-600">
+            Ada sumber data yang gagal disinkronkan — buka modul Integrasi Data untuk
+            memeriksa dan menjalankan ulang sinkronisasi.
+          </p>
+        )}
+      </Card>
     </div>
   );
 }

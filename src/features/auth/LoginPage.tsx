@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AlertCircle, Eye, EyeOff, LockKeyhole, UserRound } from 'lucide-react';
 import { BrandMark } from '@/components/layout/BrandMark';
@@ -33,14 +33,52 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [passwordFocus, setPasswordFocus] = useState(false);
+  const [usernameFocus, setUsernameFocus] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<'success' | 'error' | null>(null);
   const flashTimer = useRef<number | null>(null);
 
+  // Pupil maskot mengikuti kursor (terbatas) — nilai px lewat CSS var, tanpa
+  // re-render React. Dinonaktifkan saat prefers-reduced-motion.
+  const pageRef = useRef<HTMLElement | null>(null);
+  const gazeRaf = useRef<number | null>(null);
+  const reducedMotion = useRef(false);
+  useEffect(() => {
+    reducedMotion.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }, []);
+
+  const setGaze = useCallback((x: number, y: number) => {
+    const el = pageRef.current;
+    if (!el) return;
+    el.style.setProperty('--gaze-x', `${x.toFixed(2)}px`);
+    el.style.setProperty('--gaze-y', `${y.toFixed(2)}px`);
+  }, []);
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (reducedMotion.current || usernameFocus) return;
+      if (gazeRaf.current !== null) return;
+      const { clientX, clientY } = e;
+      gazeRaf.current = window.requestAnimationFrame(() => {
+        gazeRaf.current = null;
+        const nx = (clientX / window.innerWidth) * 2 - 1;
+        const ny = (clientY / window.innerHeight) * 2 - 1;
+        setGaze(nx * 2.4, ny * 1.8);
+      });
+    },
+    [usernameFocus, setGaze],
+  );
+
+  // Saat field username fokus, karakter melihat ke arah form (kanan-bawah).
+  useEffect(() => {
+    if (usernameFocus) setGaze(2.4, 1.2);
+  }, [usernameFocus, setGaze]);
+
   useEffect(
     () => () => {
       if (flashTimer.current) window.clearTimeout(flashTimer.current);
+      if (gazeRaf.current !== null) window.cancelAnimationFrame(gazeRaf.current);
     },
     [],
   );
@@ -51,7 +89,7 @@ export default function LoginPage() {
 
   const appName = settings?.appName ?? 'Dashboard PIP';
 
-  // Prioritas mood: hasil login > interaksi password > idle.
+  // Prioritas mood: hasil login > interaksi password > interaksi username > idle.
   const mood: MascotMood = flash === 'success'
     ? 'success'
     : flash === 'error'
@@ -61,8 +99,12 @@ export default function LoginPage() {
         : passwordFocus && password
           ? 'covering'
           : passwordFocus
-            ? 'watching'
-            : 'idle';
+            ? 'ready'
+            : usernameFocus && username
+              ? 'curious'
+              : usernameFocus
+                ? 'lookUser'
+                : 'idle';
 
   function setFlashMood(kind: 'success' | 'error') {
     setFlash(kind);
@@ -93,7 +135,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6">
+    <main
+      ref={pageRef}
+      onMouseMove={handleMouseMove}
+      className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4 sm:p-6"
+    >
       {/* Ornamen latar — gradient lembut, ringan dimuat (murni CSS) */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 -left-24 size-96 rounded-full bg-gradient-to-br from-brand-200/70 to-cyan-200/50 blur-3xl" />
@@ -119,8 +165,7 @@ export default function LoginPage() {
             Satu layar untuk penyaluran PIP dan pekerjaan tim.
           </h1>
           <p className="max-w-md text-sm leading-relaxed text-slate-500">
-            Pantau progres penyaluran per jenjang, kelola pekerjaan bersama, dan lihat rencana
-            kegiatan — dari TV ruang kerja sampai ponsel.
+            Pantau penyaluran PIP, pekerjaan tim, dan agenda kegiatan dalam satu aplikasi.
           </p>
           <Mascot mood={mood} className="max-w-sm" />
         </section>
@@ -139,7 +184,7 @@ export default function LoginPage() {
             <Mascot mood={mood} className="mx-auto -mt-2 mb-2 max-w-56 lg:hidden" />
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">Masuk</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Gunakan akun yang diberikan pengelola. Peran akun dikenali otomatis setelah masuk.
+              Masukkan username dan password untuk mengakses aplikasi.
             </p>
 
             {error && (
@@ -164,6 +209,8 @@ export default function LoginPage() {
                     className="pl-10"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
+                    onFocus={() => setUsernameFocus(true)}
+                    onBlur={() => setUsernameFocus(false)}
                     placeholder="Username"
                   />
                 </div>

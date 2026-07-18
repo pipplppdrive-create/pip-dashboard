@@ -220,12 +220,24 @@ body {
 .mascot-lean-left { transform: rotate(-3deg) translateY(1px); }
 .mascot-turn { transform: translateX(-3px) rotate(-2deg); }
 
+/* Pupil mengikuti kursor — nilai px diset LoginPage lewat --gaze-x/--gaze-y */
+.mascot-pupils {
+  transform: translate(var(--gaze-x, 0px), var(--gaze-y, 0px));
+  transition: transform 140ms ease-out;
+  transform-box: fill-box;
+}
+
 /* Tangan menutup mata: default di bawah (tersembunyi di badan) */
 .mascot-hands {
   opacity: 0;
   transform: translateY(26px);
   transition: transform 190ms ease, opacity 150ms ease;
   transform-box: fill-box;
+}
+/* Bersiap: tangan naik setengah (password fokus, belum diketik) */
+.mascot-hands-half {
+  opacity: 1;
+  transform: translateY(15px);
 }
 .mascot-hands-up {
   opacity: 1;

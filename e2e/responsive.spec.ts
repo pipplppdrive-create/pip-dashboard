@@ -15,7 +15,13 @@ const VIEWPORTS = [
   { name: 'Mobile 390x844', width: 390, height: 844 },
 ] as const;
 
-const PAGES = ['/dashboard', '/pekerjaan', '/admin/audit', '/admin/pengaturan'] as const;
+const PAGES = [
+  '/dashboard',
+  '/pekerjaan',
+  '/daftar-pegawai',
+  '/admin/audit',
+  '/admin/pengaturan',
+] as const;
 
 async function expectNoBodyOverflow(page: Page, context: string) {
   const overflow = await page.evaluate(() => ({

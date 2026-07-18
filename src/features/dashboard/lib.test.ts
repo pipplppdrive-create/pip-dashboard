@@ -7,6 +7,7 @@ import {
   needsFollowUpIds,
   totalsFromRows,
   trendSeries,
+  workStats,
 } from './lib';
 
 const rows: DistributionRow[] = [
@@ -45,6 +46,7 @@ function makeTask(partial: Partial<Task>): Task {
     dueDate: null,
     progressMode: 'MANUAL',
     manualProgress: 0,
+    picMainIds: ['emp-1'],
     picMainId: 'emp-1',
     picIds: [],
     checklist: [],
@@ -103,7 +105,7 @@ describe('attentionReasons', () => {
 
   it('tanpa PIC, terhambat (step BLOCKED), prioritas tinggi', () => {
     const r = attentionReasons(
-      makeTask({ picMainId: null, picIds: [], stepId: 'step-blocked', priority: 'TINGGI' }),
+      makeTask({ picMainIds: [], picMainId: null, picIds: [], stepId: 'step-blocked', priority: 'TINGGI' }),
       kinds,
       7,
       TODAY,
@@ -226,5 +228,33 @@ describe('trendSeries', () => {
       'Termin 1',
     );
     expect(series.map((p) => p.salurSiswa)).toEqual([20, 40]);
+  });
+});
+
+describe('workStats', () => {
+  const steps = [
+    { id: 'step-normal', boardId: 'b', name: 'To Do', kind: 'NORMAL' as const, color: '#111', sortOrder: 0, deletedAt: null, version: 1 },
+    { id: 'step-done', boardId: 'b', name: 'Selesai', kind: 'DONE' as const, color: '#222', sortOrder: 1, deletedAt: null, version: 1 },
+  ];
+
+  it('menghitung total aktif (tanpa selesai/arsip), jumlah per step, dan tenggat terdekat', () => {
+    const tasks = [
+      makeTask({ id: 'a', stepId: 'step-normal', dueDate: '2026-07-20' }),
+      makeTask({ id: 'b', stepId: 'step-normal', dueDate: '2026-07-18' }),
+      makeTask({ id: 'c', stepId: 'step-normal', dueDate: '2026-07-18' }),
+      makeTask({ id: 'done', stepId: 'step-done', dueDate: '2026-07-17' }),
+      makeTask({ id: 'arsip', stepId: 'step-normal', archivedAt: '2026-07-01T00:00:00Z' }),
+      makeTask({ id: 'lewat', stepId: 'step-normal', dueDate: '2026-07-01' }),
+    ];
+    const s = workStats(tasks, steps, TODAY);
+    expect(s.totalActive).toBe(4); // a, b, c, lewat — done & arsip tidak dihitung
+    expect(s.perStep.map((p) => p.count)).toEqual([4, 1]);
+    // Tenggat terdekat ≥ hari ini; step selesai & yang sudah lewat diabaikan
+    expect(s.nearestDue).toEqual({ date: '2026-07-18', count: 2 });
+  });
+
+  it('tanpa tenggat mendatang → nearestDue null', () => {
+    const s = workStats([makeTask({ dueDate: '2026-07-01' })], steps, TODAY);
+    expect(s.nearestDue).toBeNull();
   });
 });

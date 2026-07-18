@@ -315,6 +315,7 @@ const EDITABLE_FIELDS: Array<keyof TaskPatch> = [
   'dueDate',
   'progressMode',
   'manualProgress',
+  'picMainIds',
   'picMainId',
   'picIds',
   'checklist',
@@ -337,6 +338,7 @@ function validateTaskFields(patch: TaskPatch): void {
   }
   const pics = new Set<string>();
   if (patch.picMainId) pics.add(patch.picMainId);
+  for (const id of patch.picMainIds ?? []) pics.add(id);
   for (const id of patch.picIds ?? []) pics.add(id);
   if (pics.size > 0) {
     const employees = db.employees();
@@ -348,13 +350,18 @@ function validateTaskFields(patch: TaskPatch): void {
 }
 
 /** PIC nonaktif tidak boleh DITAMBAHKAN; PIC lama yang nonaktif boleh bertahan. */
-function assertNoNewInactivePic(prev: Pick<Task, 'picMainId' | 'picIds'> | null, patch: TaskPatch): void {
+function assertNoNewInactivePic(
+  prev: Pick<Task, 'picMainIds' | 'picMainId' | 'picIds'> | null,
+  patch: TaskPatch,
+): void {
   const employees = db.employees();
   const prevSet = new Set([
+    ...(prev?.picMainIds ?? []),
     ...(prev?.picMainId ? [prev.picMainId] : []),
     ...(prev?.picIds ?? []),
   ]);
   const nextIds = [
+    ...(patch.picMainIds ?? []),
     ...(patch.picMainId !== undefined ? (patch.picMainId ? [patch.picMainId] : []) : []),
     ...(patch.picIds ?? []),
   ];
@@ -416,8 +423,14 @@ export const localTasks: TaskService = {
       dueDate: input.dueDate ?? null,
       progressMode: input.progressMode ?? 'MANUAL',
       manualProgress: input.manualProgress ?? 0,
-      picMainId: input.picMainId ?? null,
-      picIds: (input.picIds ?? []).filter((id) => id !== input.picMainId),
+      ...(() => {
+        const mains = input.picMainIds ?? (input.picMainId ? [input.picMainId] : []);
+        return {
+          picMainIds: mains,
+          picMainId: mains[0] ?? null,
+          picIds: (input.picIds ?? []).filter((id) => !mains.includes(id)),
+        };
+      })(),
       checklist: input.checklist ?? [],
       isFocus: input.isFocus ?? false,
       sortOrder: order,
@@ -464,9 +477,14 @@ export const localTasks: TaskService = {
       after[key] = nextVal;
       (next as unknown as Record<string, unknown>)[key] = nextVal as unknown;
     }
-    if (next.picMainId) {
-      next.picIds = next.picIds.filter((p) => p !== next.picMainId);
+    // Jaga konsistensi: picMainId = elemen pertama picMainIds; PIC tambahan
+    // tidak boleh berisi PIC utama.
+    if (patch.picMainIds !== undefined || patch.picMainId !== undefined) {
+      const mains = patch.picMainIds ?? (patch.picMainId ? [patch.picMainId] : []);
+      next.picMainIds = mains;
+      next.picMainId = mains[0] ?? null;
     }
+    next.picIds = next.picIds.filter((p) => !next.picMainIds.includes(p));
     if (Object.keys(after).length === 0) return task;
     next.title = next.title.trim();
     next.updatedAt = nowISO();

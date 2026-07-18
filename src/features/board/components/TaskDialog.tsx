@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { addDays, format } from 'date-fns';
 import { notify } from '@/components/feedback/toaster';
@@ -53,7 +53,7 @@ interface FormState {
   dueDate: string;
   progressMode: 'MANUAL' | 'CHECKLIST';
   manualProgress: number;
-  picMainId: string;
+  picMainIds: string[];
   picIds: string[];
   isFocus: boolean;
   checklist: ChecklistGroup[];
@@ -72,7 +72,7 @@ function emptyForm(stepId: string): FormState {
     dueDate: '',
     progressMode: 'MANUAL',
     manualProgress: 0,
-    picMainId: '',
+    picMainIds: [],
     picIds: [],
     isFocus: false,
     checklist: [],
@@ -92,7 +92,7 @@ function formFromTask(task: Task): FormState {
     dueDate: task.dueDate ?? '',
     progressMode: task.progressMode,
     manualProgress: task.manualProgress,
-    picMainId: task.picMainId ?? '',
+    picMainIds: task.picMainIds,
     picIds: task.picIds,
     isFocus: task.isFocus,
     checklist: task.checklist,
@@ -159,8 +159,6 @@ export function TaskDialog({
     }
   }, [open, isEdit, initialStepId, firstStepId]);
 
-  const activeEmployees = useMemo(() => employees.filter((e) => e.active), [employees]);
-
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: '' }));
@@ -218,8 +216,9 @@ export function TaskDialog({
       dueDate: form.dueDate || null,
       progressMode: form.progressMode,
       manualProgress: form.manualProgress,
-      picMainId: form.picMainId || null,
-      picIds: form.picIds.filter((id) => id !== form.picMainId),
+      picMainIds: form.picMainIds,
+      picMainId: form.picMainIds[0] ?? null,
+      picIds: form.picIds.filter((id) => !form.picMainIds.includes(id)),
       checklist: form.checklist,
       isFocus: form.isFocus,
     };
@@ -354,29 +353,29 @@ export function TaskDialog({
               onChange={(e) => set('dueDate', e.target.value)}
             />
           </Field>
-          <Field label="PIC utama">
-            <Select value={form.picMainId} onChange={(e) => set('picMainId', e.target.value)}>
-              <option value="">Tanpa PIC utama</option>
-              {activeEmployees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.fullName}
-                </option>
-              ))}
-              {form.picMainId &&
-                !activeEmployees.some((e) => e.id === form.picMainId) &&
-                (() => {
-                  const emp = employees.find((e) => e.id === form.picMainId);
-                  return emp ? (
-                    <option value={emp.id}>{emp.fullName} (nonaktif)</option>
-                  ) : null;
-                })()}
-            </Select>
+          <Field
+            label="PIC utama"
+            hint="Bisa lebih dari satu pegawai."
+            className="sm:col-span-2"
+          >
+            <PicPicker
+              employees={employees}
+              value={form.picMainIds}
+              onChange={(ids) => {
+                set('picMainIds', ids);
+                // Cegah duplikasi: pegawai yang jadi PIC utama keluar dari tambahan.
+                setForm((f) => ({ ...f, picIds: f.picIds.filter((id) => !ids.includes(id)) }));
+              }}
+              placeholder="Pilih PIC utama…"
+            />
           </Field>
-          <Field label="PIC tambahan">
+          <Field label="PIC tambahan" hint="Opsional." className="sm:col-span-2">
             <PicPicker
               employees={employees}
               value={form.picIds}
               onChange={(ids) => set('picIds', ids)}
+              excludeIds={form.picMainIds}
+              placeholder="Pilih PIC tambahan…"
             />
           </Field>
         </div>

@@ -64,6 +64,15 @@ test.describe('aksesibilitas', () => {
     await expectNoSeriousViolations(page, 'pekerjaan');
   });
 
+  test('ringkasan pekerjaan & daftar pegawai', async ({ page }) => {
+    await loginAsAdmin(page);
+    for (const path of ['/pekerjaan?view=ringkasan', '/daftar-pegawai']) {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      await expectNoSeriousViolations(page, path);
+    }
+  });
+
   test('detail pekerjaan (dialog)', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/pekerjaan');

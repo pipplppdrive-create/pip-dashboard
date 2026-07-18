@@ -34,10 +34,11 @@ test.describe('login & akses', () => {
     // Chip pegawai pelaku tampil
     await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Hesti');
 
-    // Navigasi User: Dashboard & Pekerjaan tampil, Admin tidak ada
+    // Navigasi User: Dashboard, Pekerjaan, Daftar Pegawai tampil; Admin tidak ada
     const nav = page.getByRole('navigation', { name: 'Menu' });
     await expect(nav.getByRole('link', { name: 'Dashboard' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Pekerjaan' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'Daftar Pegawai' })).toBeVisible();
     await expect(nav.getByRole('link', { name: 'Admin' })).toHaveCount(0);
 
     // Sesi persisten

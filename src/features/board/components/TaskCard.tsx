@@ -9,7 +9,7 @@ import { formatDate, todayISO } from '@/lib/format';
 import { checklistStats, taskProgress } from '@/lib/progress';
 import { cn } from '@/lib/utils';
 import type { Category, Employee, Label, Task } from '@/services/types';
-import { PRIORITY_LABEL } from '../lib';
+import { PRIORITY_LABEL, taskPicIds } from '../lib';
 
 interface TaskCardProps {
   task: Task;
@@ -41,8 +41,7 @@ export function TaskCard({
 
   const category = task.categoryId ? categories.find((c) => c.id === task.categoryId) : null;
   const taskLabels = labels.filter((l) => task.labelIds.includes(l.id));
-  const pics = [task.picMainId, ...task.picIds]
-    .filter((id): id is string => !!id)
+  const pics = taskPicIds(task)
     .map((id) => employees.find((e) => e.id === id))
     .filter((e): e is Employee => !!e);
   const progress = taskProgress(task);

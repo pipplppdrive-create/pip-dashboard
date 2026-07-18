@@ -39,9 +39,12 @@ test.describe('board pekerjaan', () => {
     await dialog.getByLabel(/Judul pekerjaan/).fill('Uji E2E — surat undangan rapat');
     await dialog.getByLabel(/^Step/).selectOption({ label: 'To Do' });
     await dialog.getByLabel('Prioritas').selectOption({ label: 'Tinggi' });
-    await dialog.getByLabel('PIC utama').selectOption({ label: 'Tri Hesti Wahyudiati' });
+    // PIC utama — multi-select dengan pencarian & checkbox (komponen sama dgn tambahan)
+    await dialog.getByLabel('PIC utama').click();
+    await page.getByRole('checkbox', { name: 'Tri Hesti Wahyudiati' }).click();
+    await page.keyboard.press('Escape');
     // PIC tambahan
-    await dialog.getByRole('button', { name: 'PIC tambahan' }).click();
+    await dialog.getByLabel('PIC tambahan').click();
     await page.getByRole('checkbox', { name: 'Thoriq Rozaq Rosyadi' }).click();
     await page.keyboard.press('Escape');
     await dialog.getByRole('button', { name: 'Buat pekerjaan' }).click();
@@ -180,7 +183,7 @@ test.describe('board pekerjaan', () => {
       .getByRole('button', { name: 'Pulihkan' })
       .click();
     await expect(page.getByText('Dipulihkan dari arsip.')).toBeVisible();
-    await page.getByRole('button', { name: 'Aktif', exact: true }).click();
+    await page.getByRole('button', { name: 'Board', exact: true }).click();
     await expect(
       column(page, 'Done').getByText('Rapat koordinasi teknis dengan bank penyalur'),
     ).toBeVisible();

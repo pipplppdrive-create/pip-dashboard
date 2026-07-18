@@ -56,7 +56,10 @@ test.describe('audit metadata', () => {
     const dialog = page.getByRole('dialog', { name: 'Pekerjaan Baru' });
     await dialog.getByLabel(/Judul pekerjaan/).fill(title);
     await dialog.getByLabel(/^Step/).selectOption({ label: 'To Do' });
-    await dialog.getByLabel('PIC utama').selectOption({ label: 'Tri Hesti Wahyudiati' });
+    // PIC utama kini multi-select searchable (checkbox)
+    await dialog.getByLabel('PIC utama').click();
+    await page.getByRole('checkbox', { name: 'Tri Hesti Wahyudiati' }).click();
+    await page.keyboard.press('Escape');
     await dialog.getByRole('button', { name: 'Buat pekerjaan' }).click();
     await expect(page.getByText('Pekerjaan dibuat.')).toBeVisible();
 

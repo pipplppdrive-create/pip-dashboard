@@ -134,7 +134,9 @@ export function attentionReasons(
     else if (task.dueDate === todayIso) reasons.push(reason('DUE_TODAY'));
   }
   if (kinds.get(task.stepId) === 'BLOCKED') reasons.push(reason('BLOCKED'));
-  if (!task.picMainId && task.picIds.length === 0) reasons.push(reason('NO_PIC'));
+  if (task.picMainIds.length === 0 && !task.picMainId && task.picIds.length === 0) {
+    reasons.push(reason('NO_PIC'));
+  }
   const ageMs = nowMs - Date.parse(task.updatedAt);
   if (Number.isFinite(ageMs) && ageMs > staleDays * 86_400_000) reasons.push(reason('STALE'));
   if (task.priority === 'TINGGI') reasons.push(reason('HIGH_PRIORITY'));
@@ -196,4 +198,47 @@ export function focusScore(item: FocusItem): number {
   if (item.task.isFocus) return -1;
   const base = attentionScore(item.reasons);
   return item.needsFollowUp ? Math.min(base, 2.5) : base;
+}
+
+// ---------------------------------------------------------------------------
+// Ringkasan eksekutif pekerjaan (kartu statistik Dashboard)
+// ---------------------------------------------------------------------------
+
+export interface WorkStatsSummary {
+  /** Jumlah kartu aktif (belum diarsipkan/dihapus, di luar step selesai). */
+  totalActive: number;
+  /** Jumlah kartu per step (mengikuti urutan step board). */
+  perStep: Array<{ step: Step; count: number }>;
+  /** Tenggat terdekat yang belum lewat (ISO date) + jumlah kartu pada tanggal itu. */
+  nearestDue: { date: string; count: number } | null;
+}
+
+export function workStats(
+  tasks: readonly Task[],
+  steps: readonly Step[],
+  todayIso: string,
+): WorkStatsSummary {
+  const live = tasks.filter((t) => !t.archivedAt && !t.deletedAt);
+  const counts = new Map<string, number>();
+  for (const t of live) counts.set(t.stepId, (counts.get(t.stepId) ?? 0) + 1);
+  const kinds = stepKindMap(steps);
+
+  let nearestDate: string | null = null;
+  let nearestCount = 0;
+  for (const t of live) {
+    if (!t.dueDate || t.dueDate < todayIso) continue;
+    if (kinds.get(t.stepId) === 'DONE') continue;
+    if (nearestDate === null || t.dueDate < nearestDate) {
+      nearestDate = t.dueDate;
+      nearestCount = 1;
+    } else if (t.dueDate === nearestDate) {
+      nearestCount += 1;
+    }
+  }
+
+  return {
+    totalActive: live.filter((t) => kinds.get(t.stepId) !== 'DONE').length,
+    perStep: steps.map((step) => ({ step, count: counts.get(step.id) ?? 0 })),
+    nearestDue: nearestDate ? { date: nearestDate, count: nearestCount } : null,
+  };
 }

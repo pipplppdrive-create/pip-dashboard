@@ -116,8 +116,8 @@ function GoogleConnectionCard() {
   async function connect() {
     if (!google?.configured) {
       notify.warning(
-        'Integrasi Google belum dikonfigurasi',
-        'Isi GOOGLE_CLIENT_ID/SECRET di environment server lalu deploy — lihat Docs/SETUP-GOOGLE-OAUTH.md.',
+        'Integrasi Google belum disiapkan',
+        'Hubungi pengelola sistem untuk mengaktifkan integrasi Google terlebih dahulu.',
       );
       return;
     }
@@ -188,14 +188,14 @@ function GoogleConnectionCard() {
             {google?.connectedAt && <span>Terhubung {formatRelative(google.connectedAt)}</span>}
             {google?.lastUsedAt && <span>Terakhir dipakai {formatRelative(google.lastUsedAt)}</span>}
             <Badge tone={google?.tokenStatus === 'AKTIF' ? 'success' : 'warning'}>
-              Token {google?.tokenStatus ?? '—'}
+              {google?.tokenStatus === 'AKTIF' ? 'Koneksi aktif' : 'Perlu login ulang'}
             </Badge>
           </>
         ) : (
           <span className="text-slate-500">
             {google?.configured
               ? 'Belum ada akun terhubung. Klik "Hubungkan Google" untuk memberi akses baca spreadsheet.'
-              : 'Integrasi Google belum dikonfigurasi pada server. Aplikasi tetap berjalan; data memakai snapshot terakhir.'}
+              : 'Integrasi Google belum disiapkan oleh pengelola sistem. Aplikasi tetap berjalan; data memakai hasil sinkron terakhir.'}
           </span>
         )}
       </div>

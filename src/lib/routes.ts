@@ -4,6 +4,7 @@ export const ROUTES = {
   dashboard: '/dashboard',
   pekerjaan: '/pekerjaan',
   rencana: '/rencana-kegiatan',
+  pegawai: '/daftar-pegawai',
   admin: '/admin',
 } as const;
 

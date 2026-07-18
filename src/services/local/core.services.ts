@@ -86,6 +86,8 @@ export const localEmployees: EmployeeService = {
       team: input.team.trim(),
       sortOrder: input.sortOrder ?? employees.length,
       active: input.active ?? true,
+      avatarPath: null,
+      avatarUpdatedAt: null,
       createdAt: nowISO(),
       updatedAt: nowISO(),
     };
@@ -156,6 +158,92 @@ export const localEmployees: EmployeeService = {
 
   async setActive(id, active, ctx): Promise<Employee> {
     return localEmployees.update(id, { active }, ctx);
+  },
+
+  async setPhoto(id, photo, ctx): Promise<Employee> {
+    await ensureSeeded();
+    requireAdmin();
+    const employeeId = requireActor(ctx);
+    if (photo.size <= 0) throw new ValidationError('Berkas foto kosong.');
+    if (photo.size > 300 * 1024) {
+      throw new ValidationError('Ukuran foto maksimal 300 KB setelah kompresi.');
+    }
+    const employees = db.employees();
+    const prev = employees.find((e) => e.id === id);
+    if (!prev) throw new NotFoundError('Pegawai tidak ditemukan.');
+    const path = `local-avatar:${uid('pho')}`;
+    const { set: idbSet, del: idbDel } = await import('idb-keyval');
+    await idbSet(path, photo);
+    if (prev.avatarPath) await idbDel(prev.avatarPath).catch(() => undefined);
+    const next: Employee = {
+      ...prev,
+      avatarPath: path,
+      avatarUpdatedAt: nowISO(),
+      updatedAt: nowISO(),
+    };
+    db.write(
+      COL.employees,
+      employees.map((e) => (e.id === id ? next : e)),
+    );
+    localBus.emit({ topic: 'employees' });
+    writeAudit({
+      ...auditBase(employeeId),
+      action: 'UPDATE',
+      entityType: 'EMPLOYEE',
+      entityId: id,
+      entityLabel: `Foto profil ${next.fullName} diperbarui`,
+      after: { avatarPath: path },
+    });
+    return next;
+  },
+
+  async removePhoto(id, ctx): Promise<Employee> {
+    await ensureSeeded();
+    requireAdmin();
+    const employeeId = requireActor(ctx);
+    const employees = db.employees();
+    const prev = employees.find((e) => e.id === id);
+    if (!prev) throw new NotFoundError('Pegawai tidak ditemukan.');
+    if (prev.avatarPath) {
+      const { del: idbDel } = await import('idb-keyval');
+      await idbDel(prev.avatarPath).catch(() => undefined);
+    }
+    const next: Employee = {
+      ...prev,
+      avatarPath: null,
+      avatarUpdatedAt: nowISO(),
+      updatedAt: nowISO(),
+    };
+    db.write(
+      COL.employees,
+      employees.map((e) => (e.id === id ? next : e)),
+    );
+    localBus.emit({ topic: 'employees' });
+    writeAudit({
+      ...auditBase(employeeId),
+      action: 'UPDATE',
+      entityType: 'EMPLOYEE',
+      entityId: id,
+      entityLabel: `Foto profil ${next.fullName} dihapus`,
+      before: { avatarPath: prev.avatarPath },
+    });
+    return next;
+  },
+
+  async photoUrls(paths): Promise<Record<string, string>> {
+    await ensureSeeded();
+    requireSession();
+    const unique = [...new Set(paths.filter(Boolean))];
+    if (unique.length === 0) return {};
+    const { get: idbGet } = await import('idb-keyval');
+    const map: Record<string, string> = {};
+    await Promise.all(
+      unique.map(async (p) => {
+        const blob = await idbGet<Blob>(p).catch(() => undefined);
+        if (blob) map[p] = URL.createObjectURL(blob);
+      }),
+    );
+    return map;
   },
 
   async reorder(orderedIds, ctx): Promise<void> {

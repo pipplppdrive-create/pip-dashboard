@@ -7,7 +7,8 @@ export interface BoardFilters {
   categoryId: string | null;
   labelId: string | null;
   priority: Priority | null;
-  picId: string | null;
+  /** Cocok bila task memiliki SALAH SATU pegawai ini sebagai PIC (utama/tambahan). */
+  picIds: string[];
   durationType: DurationType | null;
 }
 
@@ -17,7 +18,7 @@ export const EMPTY_FILTERS: BoardFilters = {
   categoryId: null,
   labelId: null,
   priority: null,
-  picId: null,
+  picIds: [],
   durationType: null,
 };
 
@@ -26,7 +27,7 @@ export function countActiveFilters(f: BoardFilters): number {
   if (f.categoryId) n += 1;
   if (f.labelId) n += 1;
   if (f.priority) n += 1;
-  if (f.picId) n += 1;
+  if (f.picIds.length > 0) n += 1;
   if (f.durationType) n += 1;
   return n;
 }
@@ -41,7 +42,14 @@ export function taskMatchesFilters(task: Task, f: BoardFilters): boolean {
   if (f.categoryId && task.categoryId !== f.categoryId) return false;
   if (f.labelId && !task.labelIds.includes(f.labelId)) return false;
   if (f.priority && task.priority !== f.priority) return false;
-  if (f.picId && task.picMainId !== f.picId && !task.picIds.includes(f.picId)) return false;
+  if (f.picIds.length > 0) {
+    const pics = new Set([
+      ...task.picMainIds,
+      ...(task.picMainId ? [task.picMainId] : []),
+      ...task.picIds,
+    ]);
+    if (!f.picIds.some((id) => pics.has(id))) return false;
+  }
   if (f.durationType && task.durationType !== f.durationType) return false;
   return true;
 }
@@ -61,6 +69,17 @@ export function buildColumns(
     map.get(task.stepId)?.push(task);
   }
   return map;
+}
+
+/** Seluruh PIC sebuah task (utama lebih dulu, tanpa duplikat). */
+export function taskPicIds(task: Pick<Task, 'picMainIds' | 'picMainId' | 'picIds'>): string[] {
+  return [
+    ...new Set([
+      ...task.picMainIds,
+      ...(task.picMainId ? [task.picMainId] : []),
+      ...task.picIds,
+    ]),
+  ];
 }
 
 export const PRIORITY_LABEL: Record<Priority, string> = {

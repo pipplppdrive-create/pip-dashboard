@@ -101,6 +101,8 @@ function buildEmployees(): Employee[] {
     team: e.team,
     sortOrder: i,
     active: e.active ?? true,
+    avatarPath: null,
+    avatarUpdatedAt: null,
     createdAt: daysAgo(400),
     updatedAt: daysAgo(30),
   }));
@@ -199,6 +201,7 @@ type TaskSeed = Omit<
   | 'dueDate'
   | 'progressMode'
   | 'manualProgress'
+  | 'picMainIds'
   | 'picMainId'
   | 'picIds'
   | 'checklist'
@@ -212,14 +215,14 @@ type TaskSeed = Omit<
   Partial<Task>;
 
 function task(seed: TaskSeed): Task {
-  return {
+  const base = {
     boardId: 'board-utama',
     description: '',
     categoryId: null,
     labelIds: [],
     startDate: null,
     dueDate: null,
-    progressMode: 'MANUAL',
+    progressMode: 'MANUAL' as const,
     manualProgress: 0,
     picMainId: null,
     picIds: [],
@@ -232,6 +235,13 @@ function task(seed: TaskSeed): Task {
     updatedByEmployeeId: null,
     ...seed,
   };
+  const picMainIds =
+    base.picMainIds && base.picMainIds.length > 0
+      ? base.picMainIds
+      : base.picMainId
+        ? [base.picMainId]
+        : [];
+  return { ...base, picMainIds };
 }
 
 function buildTasks(): Task[] {

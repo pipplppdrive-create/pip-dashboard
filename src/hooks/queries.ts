@@ -44,6 +44,27 @@ export function useEmployees(includeInactive = false) {
   });
 }
 
+/**
+ * URL foto profil untuk sekumpulan pegawai (signed URL produksi / object URL
+ * lokal). Kunci = avatarPath. Pegawai tanpa foto tidak ikut diminta.
+ */
+export function useEmployeePhotos(
+  employees: ReadonlyArray<{ avatarPath: string | null; avatarUpdatedAt?: string | null }> | undefined,
+) {
+  const paths = (employees ?? [])
+    .map((e) => e.avatarPath)
+    .filter((p): p is string => !!p)
+    .sort();
+  return useQuery({
+    queryKey: ['employees', 'photos', paths] as const,
+    queryFn: () => getDataService().employees.photoUrls(paths),
+    enabled: paths.length > 0,
+    // Signed URL berlaku 1 jam — segarkan sebelum kedaluwarsa.
+    staleTime: 45 * 60_000,
+    gcTime: 50 * 60_000,
+  });
+}
+
 export function useAppSettings() {
   return useQuery({
     queryKey: qk.settings(),

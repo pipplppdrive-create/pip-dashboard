@@ -29,23 +29,23 @@ test.describe('admin', () => {
   test('Pusat Admin menampilkan modul utama non-integrasi dan dapat dinavigasi', async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto('/admin');
-    // Pusat Admin (Docs §L): modul tampil sebagai card link pada hub launcher,
-    // bukan daftar submenu "Bagian Admin" di sisi konten.
+    // Pusat Admin: modul tampil sebagai card link pada hub launcher dengan
+    // bahasa operasional (tanpa istilah teknis backend).
+    const hub = page.locator('#konten-utama');
     for (const label of [
-      'Ringkasan',
-      'Pegawai & PIC',
-      'Board & Aktivitas',
-      'Data Terhapus',
-      'Audit Log',
-      'Pengaturan',
+      /^Ringkasan/,
+      /^Integrasi Data/,
+      /^Pegawai/,
+      /^Pengaturan Pekerjaan/,
+      /^Data Terhapus/,
+      /^Riwayat Aktivitas/,
+      /^Pengaturan Aplikasi/,
     ]) {
-      await expect(page.getByRole('link', { name: new RegExp(label) })).toBeVisible();
+      await expect(hub.getByRole('link', { name: label })).toBeVisible();
     }
-    await page.getByRole('link', { name: /Pegawai & PIC/ }).click();
+    await hub.getByRole('link', { name: /^Pegawai/ }).click();
     await expect(page).toHaveURL(/\/admin\/pegawai/);
-    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(
-      'Pegawai & PIC',
-    );
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Pegawai');
   });
 
   test('impor Excel: upload → mapping → preview → simpan & aktifkan', async ({ page }) => {

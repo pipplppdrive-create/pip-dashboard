@@ -56,6 +56,9 @@ export interface Employee {
   team: string;
   sortOrder: number;
   active: boolean;
+  /** Path foto profil di penyimpanan (null = pakai avatar bawaan). */
+  avatarPath: string | null;
+  avatarUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,6 +132,11 @@ export interface Task {
   progressMode: ProgressMode;
   /** Nilai progres saat mode MANUAL (0–100). */
   manualProgress: number;
+  /**
+   * PIC utama (bisa lebih dari satu). `picMainId` dipertahankan sebagai
+   * elemen pertama untuk kompatibilitas data & integrasi lama.
+   */
+  picMainIds: string[];
   picMainId: string | null;
   /** PIC tambahan (tidak termasuk PIC utama). */
   picIds: string[];
@@ -531,6 +539,7 @@ export interface TaskCreateInput {
   dueDate?: string | null;
   progressMode?: ProgressMode;
   manualProgress?: number;
+  picMainIds?: string[];
   picMainId?: string | null;
   picIds?: string[];
   checklist?: ChecklistGroup[];
@@ -550,6 +559,7 @@ export type TaskPatch = Partial<
     | 'dueDate'
     | 'progressMode'
     | 'manualProgress'
+    | 'picMainIds'
     | 'picMainId'
     | 'picIds'
     | 'checklist'
@@ -617,6 +627,12 @@ export interface EmployeeService {
   update(id: string, patch: Partial<EmployeeInput>, ctx: ActorContext): Promise<Employee>;
   setActive(id: string, active: boolean, ctx: ActorContext): Promise<Employee>;
   reorder(orderedIds: string[], ctx: ActorContext): Promise<void>;
+  /** Unggah/ganti foto profil (khusus Admin). Blob sudah diproses (1:1, ≤300 KB). */
+  setPhoto(id: string, photo: Blob, ctx: ActorContext): Promise<Employee>;
+  /** Hapus foto profil (kembali ke avatar bawaan). */
+  removePhoto(id: string, ctx: ActorContext): Promise<Employee>;
+  /** URL tampil untuk daftar path foto (signed URL di produksi, object URL lokal). */
+  photoUrls(paths: string[]): Promise<Record<string, string>>;
 }
 
 export interface BoardService {

@@ -34,6 +34,8 @@ export interface EmployeeRow {
   team: string;
   sort_order: number;
   active: boolean;
+  avatar_path: string | null;
+  avatar_updated_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +51,8 @@ export const toEmployee = (r: EmployeeRow): Employee => ({
   team: r.team,
   sortOrder: r.sort_order,
   active: r.active,
+  avatarPath: r.avatar_path ?? null,
+  avatarUpdatedAt: r.avatar_updated_at ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -103,6 +107,7 @@ export interface TaskRow {
   due_date: string | null;
   progress_mode: Task['progressMode'];
   manual_progress: number;
+  pic_main_ids: string[] | null;
   pic_main_id: string | null;
   pic_ids: string[];
   checklist: ChecklistGroup[];
@@ -118,7 +123,15 @@ export interface TaskRow {
   updated_by_employee_id: string | null;
 }
 
-export const toTask = (r: TaskRow): Task => ({
+export const toTask = (r: TaskRow): Task => {
+  // Baris lama (pra-0006) hanya punya pic_main_id — fallback ke kolom lama.
+  const picMainIds =
+    r.pic_main_ids && r.pic_main_ids.length > 0
+      ? r.pic_main_ids
+      : r.pic_main_id
+        ? [r.pic_main_id]
+        : [];
+  return {
   id: r.id,
   boardId: r.board_id,
   stepId: r.step_id,
@@ -132,8 +145,9 @@ export const toTask = (r: TaskRow): Task => ({
   dueDate: r.due_date,
   progressMode: r.progress_mode,
   manualProgress: r.manual_progress,
-  picMainId: r.pic_main_id,
-  picIds: r.pic_ids ?? [],
+  picMainIds,
+  picMainId: picMainIds[0] ?? null,
+  picIds: (r.pic_ids ?? []).filter((id) => !picMainIds.includes(id)),
   checklist: r.checklist ?? [],
   isFocus: r.is_focus,
   sortOrder: r.sort_order,
@@ -145,7 +159,8 @@ export const toTask = (r: TaskRow): Task => ({
   version: r.version,
   createdByEmployeeId: r.created_by_employee_id,
   updatedByEmployeeId: r.updated_by_employee_id,
-});
+  };
+};
 
 export interface CommentRow {
   id: string;

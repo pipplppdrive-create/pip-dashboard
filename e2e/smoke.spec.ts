@@ -7,7 +7,7 @@ test.describe('smoke: kerangka aplikasi', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test('setelah login: navigasi 3 menu utama & console bersih', async ({ page }) => {
+  test('setelah login: navigasi menu utama & console bersih', async ({ page }) => {
     const errors = collectConsoleErrors(page);
     await loginAsAdmin(page);
 
@@ -15,6 +15,12 @@ test.describe('smoke: kerangka aplikasi', () => {
     await nav.getByRole('link', { name: 'Pekerjaan' }).click();
     await expect(page).toHaveURL(/\/pekerjaan$/);
     await expect(page.getByRole('heading', { name: 'Pekerjaan', exact: true })).toBeVisible();
+
+    await nav.getByRole('link', { name: 'Daftar Pegawai' }).click();
+    await expect(page).toHaveURL(/\/daftar-pegawai$/);
+    await expect(
+      page.getByRole('heading', { name: 'Daftar Pegawai', exact: true }),
+    ).toBeVisible();
 
     await nav.getByRole('link', { name: 'Admin' }).click();
     await expect(page).toHaveURL(/\/admin$/);
