@@ -2,9 +2,9 @@
  * GET /api/integrations/google/status (akun terautentikasi)
  * Status koneksi Google TANPA nilai rahasia apa pun.
  */
-import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env';
-import { fail, json } from '../../_lib/http';
-import { dbClient, verifyRole } from '../../_lib/supabase';
+import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env.js';
+import { fail, json } from '../../_lib/http.js';
+import { dbClient, verifyRole } from '../../_lib/supabase.js';
 
 interface ConnRow {
   email: string | null;

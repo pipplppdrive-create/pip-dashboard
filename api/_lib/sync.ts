@@ -9,14 +9,14 @@
  *  - snapshot valid terakhir TIDAK ditimpa bila validasi gagal;
  *  - tidak menyimpan data pribadi siswa (hanya agregat per SK/jenjang).
  */
-import { sha256Hex } from './crypto';
-import type { ServerEnv } from './env';
+import { sha256Hex } from './crypto.js';
+import type { ServerEnv } from './env.js';
 import {
   fetchSheetValues,
   fetchSpreadsheetMeta,
   getAccessToken,
   GoogleNotConnectedError,
-} from './google';
+} from './google.js';
 import {
   ACTIVITY_RULES,
   detectMappings,
@@ -30,8 +30,8 @@ import {
   PIP_DETAIL_RULES,
   PIP_REKAP_RULES,
   type HeaderRule,
-} from './parse';
-import { dbClient, type DbClient } from './supabase';
+} from './parse.js';
+import { dbClient, type DbClient } from './supabase.js';
 
 // ---------------------------------------------------------------------------
 // Tipe baris DB (snake_case)

@@ -3,9 +3,9 @@
  * Refresh token disimpan TERENKRIPSI di google_oauth_tokens dan tidak pernah
  * meninggalkan server.
  */
-import { decryptSecret, encryptSecret } from './crypto';
-import type { ServerEnv } from './env';
-import { dbClient } from './supabase';
+import { decryptSecret, encryptSecret } from './crypto.js';
+import type { ServerEnv } from './env.js';
+import { dbClient } from './supabase.js';
 
 export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 

@@ -37,3 +37,6 @@ npm-debug.log*
 # Claude Code local tooling (bukan bagian aplikasi)
 .agents/
 skills-lock.json
+
+.vercel
+.env*

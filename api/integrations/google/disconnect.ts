@@ -2,10 +2,10 @@
  * POST /api/integrations/google/disconnect (Admin)
  * Mencabut token di Google (best-effort) dan menghapus token tersimpan.
  */
-import { getEnv, supabaseConfigured } from '../../_lib/env';
-import { fail, json } from '../../_lib/http';
-import { disconnectGoogle } from '../../_lib/google';
-import { requireAdmin } from '../../_lib/supabase';
+import { getEnv, supabaseConfigured } from '../../_lib/env.js';
+import { fail, json } from '../../_lib/http.js';
+import { disconnectGoogle } from '../../_lib/google.js';
+import { requireAdmin } from '../../_lib/supabase.js';
 
 export async function POST(request: Request): Promise<Response> {
   const env = getEnv();

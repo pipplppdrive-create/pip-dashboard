@@ -7,11 +7,11 @@
  * GET (cron Vercel / rekonsiliasi terjadwal): sinkronkan seluruh sumber aktif.
  *   Dilindungi header Authorization: Bearer <CRON_SECRET|GOOGLE_WEBHOOK_SECRET>.
  */
-import { getEnv, supabaseConfigured } from '../_lib/env';
-import { fail, json } from '../_lib/http';
-import { requireAdmin } from '../_lib/supabase';
-import { previewBinding, syncAllActive, syncSource, testSource } from '../_lib/sync';
-import { timingSafeEqual } from '../_lib/crypto';
+import { getEnv, supabaseConfigured } from '../_lib/env.js';
+import { fail, json } from '../_lib/http.js';
+import { requireAdmin } from '../_lib/supabase.js';
+import { previewBinding, syncAllActive, syncSource, testSource } from '../_lib/sync.js';
+import { timingSafeEqual } from '../_lib/crypto.js';
 
 interface RunBody {
   sourceId?: string;

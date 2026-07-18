@@ -4,11 +4,11 @@
  * Admin cukup menghubungkan satu akun sekali; akun itu dipakai membaca
  * seluruh spreadsheet (scope spreadsheets.readonly + email akun).
  */
-import { hmacSha256Hex } from '../../_lib/crypto';
-import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env';
-import { fail, json } from '../../_lib/http';
-import { requireAdmin } from '../../_lib/supabase';
-import { SHEETS_SCOPE } from '../../_lib/google';
+import { hmacSha256Hex } from '../../_lib/crypto.js';
+import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env.js';
+import { fail, json } from '../../_lib/http.js';
+import { requireAdmin } from '../../_lib/supabase.js';
+import { SHEETS_SCOPE } from '../../_lib/google.js';
 
 export async function GET(request: Request): Promise<Response> {
   const env = getEnv();

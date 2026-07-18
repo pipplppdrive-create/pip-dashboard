@@ -8,10 +8,10 @@
  *  - TIDAK mempercayai payload mentah — server membaca ulang sheet sendiri;
  *  - idempotent: upsert berdasar source_row_key.
  */
-import { timingSafeEqual } from '../_lib/crypto';
-import { getEnv, supabaseConfigured } from '../_lib/env';
-import { fail, json } from '../_lib/http';
-import { syncBySpreadsheetId } from '../_lib/sync';
+import { timingSafeEqual } from '../_lib/crypto.js';
+import { getEnv, supabaseConfigured } from '../_lib/env.js';
+import { fail, json } from '../_lib/http.js';
+import { syncBySpreadsheetId } from '../_lib/sync.js';
 
 interface WebhookBody {
   spreadsheetId?: string;

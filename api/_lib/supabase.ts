@@ -3,7 +3,7 @@
  * ringan di Vercel Function. SERVICE ROLE HANYA di server; tidak pernah
  * dikirim ke frontend.
  */
-import type { ServerEnv } from './env';
+import type { ServerEnv } from './env.js';
 
 export interface DbClient {
   select<T>(table: string, query: string): Promise<T[]>;

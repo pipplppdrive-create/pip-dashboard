@@ -4,11 +4,11 @@
  * TERENKRIPSI (server-only), lalu kembali ke halaman Admin Integrasi.
  * Tidak pernah menampilkan stack trace atau nilai token.
  */
-import { hmacSha256Hex, timingSafeEqual } from '../../_lib/crypto';
-import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env';
-import { redirect } from '../../_lib/http';
-import { exchangeCode, fetchUserInfo, storeTokens } from '../../_lib/google';
-import { dbClient } from '../../_lib/supabase';
+import { hmacSha256Hex, timingSafeEqual } from '../../_lib/crypto.js';
+import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env.js';
+import { redirect } from '../../_lib/http.js';
+import { exchangeCode, fetchUserInfo, storeTokens } from '../../_lib/google.js';
+import { dbClient } from '../../_lib/supabase.js';
 
 const STATE_TTL_MS = 10 * 60_000;
 
