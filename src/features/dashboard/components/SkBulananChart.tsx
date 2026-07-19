@@ -39,10 +39,9 @@ interface SkBulananChartProps {
  * Satu nomor SK unik dihitung SATU kali pada bulan tanggal SK paling awal;
  * SK tanpa tanggal valid di luar chart (dilaporkan sebagai catatan).
  *
- * Rentang bulan dipangkas: hanya Jan s.d. bulan terakhir yang memiliki SK
- * ditampilkan, sehingga bulan-bulan kosong di ujung tahun tidak memampatkan
- * batang. Warna kategorikal jenjang berurutan tetap; angka eksak per jenjang
- * selalu tersedia di tabel Rekap per Jenjang (aturan relief kontras).
+ * Sumbu bulan selalu Jan–Des (komposisi referensi Dashboard) — bulan tanpa SK
+ * tampil bernilai 0. Warna kategorikal jenjang berurutan tetap; angka eksak per
+ * jenjang selalu tersedia di tabel Detail Rekap per Jenjang (relief kontras).
  */
 export function SkBulananChart({ stats }: SkBulananChartProps) {
   if (stats.totalSk === 0) {
@@ -60,15 +59,7 @@ export function SkBulananChart({ stats }: SkBulananChartProps) {
     stats.perMonth.some((m) => (m.perJenjang[j] ?? 0) > 0),
   );
 
-  // Pangkas bulan kosong di ujung: tampilkan Jan s.d. bulan terakhir yang
-  // memiliki SK (minimal 3 bulan agar batang tidak terlihat kesepian).
-  const lastMonthWithData = stats.perMonth.reduce(
-    (last, m) => (m.total > 0 ? m.month : last),
-    1,
-  );
-  const monthsShown = Math.max(lastMonthWithData, 3);
-
-  const data = stats.perMonth.slice(0, monthsShown).map((m) => ({
+  const data = stats.perMonth.map((m) => ({
     bulan: MONTH_LABELS[m.month - 1],
     total: m.total,
     ...Object.fromEntries(activeJenjang.map((j) => [j, m.perJenjang[j] ?? 0])),
@@ -114,6 +105,10 @@ export function SkBulananChart({ stats }: SkBulananChartProps) {
                 fontSize: 12,
                 boxShadow: '0 4px 12px rgb(15 23 42 / 0.08)',
               }}
+              // Teks tooltip memakai warna tinta, bukan warna seri (kontras AA);
+              // identitas jenjang tetap terbawa lewat urutan & legend.
+              labelStyle={{ color: CHART_INK.label, fontWeight: 700 }}
+              itemStyle={{ color: CHART_INK.label }}
             />
             <Legend
               iconType="circle"

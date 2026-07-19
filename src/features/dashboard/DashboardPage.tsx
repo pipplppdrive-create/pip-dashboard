@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Database } from 'lucide-react';
+import { Database, ShieldCheck } from 'lucide-react';
 import { ErrorState } from '@/components/feedback/error-state';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -16,16 +16,16 @@ import {
   useSources,
 } from '@/hooks/queries';
 import { DistributionKpis } from './components/DistributionKpis';
-import { ProgresJenjangDonuts } from './components/ProgresJenjangDonuts';
 import { RekapJenjangTable } from './components/RekapJenjangTable';
 import { SkBulananChart } from './components/SkBulananChart';
+import { SkJenjangDonut } from './components/SkJenjangDonut';
 import { skStats, totalsFromRows, type JenjangFilter } from './lib';
 
 function SectionSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {[0, 1, 2].map((i) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} className="h-30" />
         ))}
       </div>
@@ -41,7 +41,7 @@ function SectionSkeleton() {
 /**
  * Dashboard — khusus informasi penyaluran PIP (pekerjaan tim ada di menu
  * Pekerjaan › Ringkasan). Satu layar tanpa scroll pada TV/desktop (≥ lg):
- * KPI ringkas → Penerbitan SK per Bulan + Progres per Jenjang → Rekap.
+ * 4 KPI → Rekap SK per Bulan + Jumlah SK per Jenjang (donut) → Detail Rekap.
  *
  * Sumber data (semua angka nyata, tanpa tren sintetis):
  * - KPI & progres  : snapshot aktif distribution_snapshots (kuota alokasi
@@ -98,11 +98,6 @@ export default function DashboardPage() {
     [snapshot, jenjang],
   );
 
-  const chartRows = useMemo(() => {
-    if (!snapshot) return [];
-    return jenjang === 'ALL' ? snapshot.rows : snapshot.rows.filter((r) => r.jenjang === jenjang);
-  }, [snapshot, jenjang]);
-
   /** Agregasi SK unik (per jenjang & per bulan) mengikuti filter aktif. */
   const sk = useMemo(
     () => skStats(skRecordsQ.data ?? [], year, jenjang),
@@ -114,10 +109,17 @@ export default function DashboardPage() {
   const distributionError = snapshotQ.isError ? snapshotQ.error : null;
 
   return (
-    <section aria-labelledby="judul-penyaluran" className="flex flex-col gap-4 short:gap-3 tall:gap-3">
+    <section aria-labelledby="judul-penyaluran" className="flex flex-col gap-4 short:gap-2.5 tall:gap-3">
       {/* Header seksi: judul, status data, filter */}
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden
+            className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-(image:--gradient-brand) text-white shadow-(--shadow-lift) sm:inline-flex"
+          >
+            <ShieldCheck className="size-5" />
+          </span>
+          <div>
           <h2 id="judul-penyaluran" className="text-lg font-bold tracking-tight text-slate-900">
             Penyaluran PIP
           </h2>
@@ -158,6 +160,7 @@ export default function DashboardPage() {
               </span>
             )}
           </p>
+          </div>
         </div>
         {/* Filter: tahun, periode, jenjang */}
         <div className="flex flex-wrap items-end gap-2" role="group" aria-label="Filter penyaluran">
@@ -222,29 +225,32 @@ export default function DashboardPage() {
           <div className="shrink-0">
             <DistributionKpis totals={totals} skCount={hasSkDetail ? sk.totalSk : null} />
           </div>
-          <div className="grid gap-4 lg:grid-cols-12">
-            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-7 tall:h-[312px]">
+          <div className="grid gap-4 short:gap-3 lg:grid-cols-12">
+            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-7 tall:h-[340px] short:h-[272px]">
               <CardHeader
-                title="Penerbitan SK per Bulan"
-                description="Jumlah nomor SK unik berdasarkan tanggal SK — sheet Pemberian"
+                title="Rekap SK per Bulan"
+                description="Jumlah penerbitan SK unik berdasarkan tanggal SK — sheet Pemberian"
               />
               <div className="min-h-0 flex-1 p-4 pt-1">
                 <SkBulananChart stats={sk} />
               </div>
             </Card>
-            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-5 tall:h-[312px]">
+            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-5 tall:h-[340px] short:h-[272px]">
               <CardHeader
-                title="Progres per Jenjang"
-                description="Realisasi SK Pemberian terhadap alokasi siswa"
+                title="Jumlah SK per Jenjang"
+                description="Nomor SK unik per jenjang pendidikan — bukan jumlah siswa"
               />
               <div className="min-h-0 flex-1 p-4 pt-2">
-                <ProgresJenjangDonuts rows={chartRows} />
+                <SkJenjangDonut
+                  perJenjang={hasSkDetail ? sk.perJenjang : {}}
+                  totalSk={hasSkDetail ? sk.totalSk : 0}
+                />
               </div>
             </Card>
           </div>
           <Card className="shrink-0">
             <CardHeader
-              title="Rekap per Jenjang"
+              title="Detail Rekap per Jenjang"
               description="Alokasi, SK Pemberian, jumlah SK unik, dana, dan progres"
             />
             <div className="p-4 pt-2">

@@ -53,17 +53,20 @@ for (const vp of VIEWPORTS) {
     // Elemen kunci tetap dapat diakses
     await page.goto('/dashboard');
     await expect(page.getByText('Penyaluran PIP').first()).toBeVisible();
-    // Dashboard TV/desktop (≥ lg): satu layar penuh tanpa scroll vertikal.
+    // Dashboard TV/desktop: 1920×1080 & 1440×900 satu layar penuh tanpa
+    // scroll; 1366×768 mode compact — scroll pendek diizinkan (lebih baik
+    // daripada mengecilkan teks/chart secara ekstrem).
     if (vp.width >= 1366) {
       await page.waitForLoadState('networkidle');
       const vertical = await page.evaluate(() => ({
         scrollHeight: document.documentElement.scrollHeight,
         clientHeight: document.documentElement.clientHeight,
       }));
+      const maxExtra = vp.height >= 900 ? 1 : 260;
       expect(
         vertical.scrollHeight,
-        `${vp.name} /dashboard: butuh scroll vertikal (${vertical.scrollHeight} > ${vertical.clientHeight})`,
-      ).toBeLessThanOrEqual(vertical.clientHeight + 1);
+        `${vp.name} /dashboard: scroll vertikal melebihi batas (${vertical.scrollHeight} > ${vertical.clientHeight} + ${maxExtra})`,
+      ).toBeLessThanOrEqual(vertical.clientHeight + maxExtra);
     }
     await page.goto('/pekerjaan');
     await expect(page.getByRole('region', { name: 'Step To Do', exact: true })).toBeVisible();

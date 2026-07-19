@@ -14,12 +14,13 @@ test.describe('dashboard', () => {
     await expect(page.getByText('18.000.000').first()).toBeVisible();
     await expect(page.getByText('Alokasi', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('SK Pemberian', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Capaian', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Progres Siswa', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Progres Dana', { exact: true }).first()).toBeVisible();
     // Chart & panel unik
-    await expect(page.getByText('Penerbitan SK per Bulan')).toBeVisible();
-    await expect(page.getByText('Progres per Jenjang')).toBeVisible();
+    await expect(page.getByText('Rekap SK per Bulan')).toBeVisible();
+    await expect(page.getByText('Jumlah SK per Jenjang')).toBeVisible();
     // Rekap jenjang + kolom jumlah SK unik
-    await expect(page.getByText('Rekap per Jenjang')).toBeVisible();
+    await expect(page.getByText('Detail Rekap per Jenjang')).toBeVisible();
     const table = page.locator('table');
     await expect(table.getByText('Jumlah SK')).toBeVisible();
     for (const j of ['SD', 'SMP', 'SMA', 'SMK']) {
