@@ -3,11 +3,13 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
   CheckCircle2,
+  Copy,
   ExternalLink,
   Eye,
   Link2,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Star,
   Unplug,
 } from 'lucide-react';
@@ -97,9 +99,84 @@ export function IntegrationsSection() {
 // Koneksi Google
 // ---------------------------------------------------------------------------
 
+/**
+ * Koneksi Sistem (Service Account) — mode akses utama (§4).
+ * Menyembunyikan proses teknis: tanpa tombol "Hubungkan Google", tanpa login,
+ * tanpa menampilkan private key. Email Service Account ditampilkan agar Admin
+ * dapat membagikan spreadsheet dengan akses Viewer.
+ */
+function SystemConnectionCard({
+  email,
+  lastUsedAt,
+}: {
+  email: string | null;
+  lastUsedAt: string | null;
+}) {
+  async function copyEmail() {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      notify.success('Email koneksi disalin.');
+    } catch {
+      notify.warning('Tidak dapat menyalin otomatis', 'Salin email secara manual.');
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Koneksi Google Sheets"
+        description="Aplikasi membaca spreadsheet melalui koneksi sistem (read-only). Tidak perlu login Google."
+        actions={
+          <Badge tone="success">
+            <ShieldCheck className="size-3.5" aria-hidden />
+            Aktif
+          </Badge>
+        }
+      />
+      <div className="space-y-3 p-4 pt-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
+          <span className="inline-flex items-center gap-1.5 font-semibold text-slate-800">
+            <CheckCircle2 className="size-4 text-success-600" aria-hidden />
+            Metode akses: Koneksi Sistem
+          </span>
+          {lastUsedAt && <span>Terakhir dipakai {formatRelative(lastUsedAt)}</span>}
+        </div>
+        {email ? (
+          <div className="rounded-xl border border-info-100 bg-info-50 p-3">
+            <p className="text-xs leading-relaxed text-info-700">
+              Bagikan spreadsheet kepada email koneksi sistem dengan akses{' '}
+              <span className="font-semibold">Viewer</span>.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <code className="rounded-lg border border-info-200 bg-white px-2.5 py-1.5 text-xs font-semibold break-all text-slate-700">
+                {email}
+              </code>
+              <Button size="sm" variant="outline" onClick={() => void copyEmail()}>
+                <Copy className="size-3.5" aria-hidden />
+                Salin email
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+            Koneksi sistem aktif. Email koneksi tidak tersedia untuk ditampilkan.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function GoogleConnectionCard() {
   const { data: google, refetch } = useGoogleStatus();
   const [busy, setBusy] = useState(false);
+
+  // Mode utama: Service Account ("Koneksi Sistem"). Tidak ada login Google —
+  // Admin cukup membagikan spreadsheet ke email koneksi sistem (Viewer).
+  if (google?.accessMode === 'service_account') {
+    return <SystemConnectionCard email={google.serviceAccountEmail} lastUsedAt={google.lastUsedAt} />;
+  }
 
   /** Header Authorization dari sesi Supabase (hanya ada pada mode produksi). */
   async function authHeader(): Promise<Record<string, string>> {

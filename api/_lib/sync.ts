@@ -216,8 +216,10 @@ export async function testSource(
       ok: false,
       message:
         err instanceof GoogleNotConnectedError
-          ? 'Integrasi Google belum dikonfigurasi.'
-          : 'Spreadsheet tidak dapat diakses. Periksa akses akun Google terhubung.',
+          ? 'Koneksi Google Sheets belum dikonfigurasi.'
+          : err instanceof Error
+            ? err.message
+            : 'Spreadsheet tidak dapat diakses. Pastikan file dibagikan ke email koneksi (Viewer).',
     };
   }
 }

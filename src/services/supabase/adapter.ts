@@ -29,6 +29,7 @@ import type {
   ChangeEvent,
   ChangeTopic,
   DataService,
+  GoogleConnectionStatus,
   Role,
   SessionInfo,
   Step,
@@ -1585,14 +1586,10 @@ export const supabaseAdapter: DataService = {
     async googleStatus() {
       await requireRole();
       // Status detail (configured) berasal dari server; fallback ke tabel metadata.
-      const viaApi = await callServerApi<{
-        configured: boolean;
-        connected: boolean;
-        email: string | null;
-        connectedAt: string | null;
-        lastUsedAt: string | null;
-        tokenStatus: 'AKTIF' | 'KEDALUWARSA' | 'DICABUT' | null;
-      }>('GET', '/api/integrations/google/status');
+      const viaApi = await callServerApi<GoogleConnectionStatus>(
+        'GET',
+        '/api/integrations/google/status',
+      );
       if (viaApi.ok && viaApi.data) return viaApi.data;
       const { data } = await getSupabase()
         .from('google_oauth_connections')
@@ -1602,6 +1599,8 @@ export const supabaseAdapter: DataService = {
       const row = (data ?? null) as GoogleConnRow | null;
       return {
         configured: false,
+        accessMode: 'none',
+        serviceAccountEmail: null,
         connected: Boolean(row?.email),
         email: row?.email ?? null,
         connectedAt: row?.connected_at ?? null,

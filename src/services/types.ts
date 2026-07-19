@@ -393,8 +393,15 @@ export interface SyncRun {
 
 /** Status koneksi Google milik Admin (tanpa nilai token). */
 export interface GoogleConnectionStatus {
-  /** Env Google OAuth terpasang di server. */
+  /** Akses Google Sheets terpasang di server (mode apa pun). */
   configured: boolean;
+  /**
+   * Mode akses efektif: 'service_account' (Koneksi Sistem, utama),
+   * 'oauth' (alternatif), atau 'none' (belum dikonfigurasi).
+   */
+  accessMode: 'service_account' | 'oauth' | 'none';
+  /** Email Service Account untuk dibagikan Viewer (mode service_account). */
+  serviceAccountEmail: string | null;
   connected: boolean;
   email: string | null;
   connectedAt: string | null;

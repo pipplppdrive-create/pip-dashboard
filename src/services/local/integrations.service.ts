@@ -294,6 +294,8 @@ export const localIntegrations: IntegrationService = {
     // Mode lokal tidak memiliki server OAuth — status: belum dikonfigurasi.
     return {
       configured: false,
+      accessMode: 'none',
+      serviceAccountEmail: null,
       connected: false,
       email: null,
       connectedAt: null,

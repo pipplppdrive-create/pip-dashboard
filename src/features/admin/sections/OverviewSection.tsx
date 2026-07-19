@@ -81,24 +81,37 @@ export function OverviewSection() {
           description="Koneksi Google dan sinkronisasi sumber spreadsheet"
         />
         <ul className="divide-y divide-slate-100 px-4 pb-2">
-          <StatusRow
-            label="Akun Google"
-            detail={
-              google?.connected
-                ? `Terhubung sebagai ${google.email ?? '—'}${google.connectedAt ? ` · sejak ${formatRelative(google.connectedAt)}` : ''}`
-                : 'Satu akun Google dipakai untuk membaca seluruh spreadsheet.'
-            }
-            value={
-              google?.connected
-                ? google.tokenStatus === 'AKTIF'
-                  ? 'Terhubung'
-                  : 'Perlu login ulang'
-                : google?.configured
-                  ? 'Belum terhubung'
-                  : 'Belum disiapkan'
-            }
-            tone={google?.connected ? (google.tokenStatus === 'AKTIF' ? 'ok' : 'warn') : 'off'}
-          />
+          {google?.accessMode === 'service_account' ? (
+            <StatusRow
+              label="Koneksi Google Sheets"
+              detail={
+                google.serviceAccountEmail
+                  ? `Koneksi Sistem · bagikan spreadsheet ke ${google.serviceAccountEmail} (Viewer).`
+                  : 'Koneksi Sistem membaca spreadsheet (read-only). Tidak perlu login Google.'
+              }
+              value="Aktif"
+              tone="ok"
+            />
+          ) : (
+            <StatusRow
+              label="Akun Google"
+              detail={
+                google?.connected
+                  ? `Terhubung sebagai ${google.email ?? '—'}${google.connectedAt ? ` · sejak ${formatRelative(google.connectedAt)}` : ''}`
+                  : 'Satu akun Google dipakai untuk membaca seluruh spreadsheet.'
+              }
+              value={
+                google?.connected
+                  ? google.tokenStatus === 'AKTIF'
+                    ? 'Terhubung'
+                    : 'Perlu login ulang'
+                  : google?.configured
+                    ? 'Belum terhubung'
+                    : 'Belum disiapkan'
+              }
+              tone={google?.connected ? (google.tokenStatus === 'AKTIF' ? 'ok' : 'warn') : 'off'}
+            />
+          )}
           <StatusRow
             label="Sumber spreadsheet"
             detail={
