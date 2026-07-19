@@ -19,7 +19,7 @@ import { Modal } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { formatDate, formatRelative } from '@/lib/format';
+import { formatDate, formatDateTime, formatRelative } from '@/lib/format';
 import {
   useActivities,
   useActivitySyncInfo,
@@ -72,10 +72,7 @@ export default function PlanPage() {
   const { data: syncInfo } = useActivitySyncInfo(activeYear);
   const { data: employees } = useEmployees(true);
 
-  const filtered = useMemo(
-    () => applyFilters(items ?? [], filters),
-    [items, filters],
-  );
+  const filtered = useMemo(() => applyFilters(items ?? [], filters), [items, filters]);
   const categories = useMemo(() => uniqueCategories(items ?? []), [items]);
 
   const yearOptions = useMemo(() => {
@@ -237,7 +234,11 @@ export default function PlanPage() {
         <Card>
           <EmptyState
             icon={CalendarRange}
-            title={source ? `Belum ada kegiatan untuk ${activeYear}` : 'Integrasi data belum dikonfigurasi'}
+            title={
+              source
+                ? `Belum ada kegiatan untuk ${activeYear}`
+                : 'Integrasi data belum dikonfigurasi'
+            }
             description={
               source
                 ? 'Kegiatan akan tampil otomatis setelah spreadsheet terisi dan tersinkron.'
@@ -247,9 +248,7 @@ export default function PlanPage() {
         </Card>
       ) : (
         <>
-          {view === 'ringkasan' && (
-            <SummaryView items={filtered} onOpen={setDetail} />
-          )}
+          {view === 'ringkasan' && <SummaryView items={filtered} onOpen={setDetail} />}
           {view === 'kalender' && (
             <CalendarView
               items={filtered}
@@ -267,20 +266,34 @@ export default function PlanPage() {
       <Modal
         open={detail !== null}
         onOpenChange={(open) => !open && setDetail(null)}
-        title={detail?.title ?? ''}
-        description={detail ? formatRange(detail) : undefined}
-        size="md"
+        title={
+          <span className="text-xl leading-tight font-bold text-slate-900 sm:text-2xl">
+            {detail?.title ?? ''}
+          </span>
+        }
+        description={
+          detail ? (
+            <span className="text-sm text-slate-500 sm:text-base">{formatRange(detail)}</span>
+          ) : undefined
+        }
+        size="lg"
       >
         {detail && (
-          <div className="space-y-3 px-5 py-4 text-sm">
+          <div className="space-y-4 text-[15px]">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={STATUS_META[detail.status].tone === 'brand' ? 'brand' : STATUS_META[detail.status].tone}>
+              <Badge
+                tone={
+                  STATUS_META[detail.status].tone === 'brand'
+                    ? 'brand'
+                    : STATUS_META[detail.status].tone
+                }
+              >
                 {STATUS_META[detail.status].label}
               </Badge>
               {detail.category && <Badge tone="outline">{detail.category}</Badge>}
               {detail.allDay && <Badge tone="neutral">Sepanjang hari</Badge>}
             </div>
-            <dl className="space-y-2.5">
+            <dl className="space-y-3">
               <DetailRow icon={CalendarDays} label="Tanggal">
                 {formatDate(detail.startDate)}
                 {detail.endDate !== detail.startDate && <> — {formatDate(detail.endDate)}</>}
@@ -324,14 +337,19 @@ export default function PlanPage() {
               )}
             </dl>
             {detail.notes && (
-              <p className="rounded-xl bg-slate-50 px-3 py-2.5 text-sm text-slate-600">
-                {detail.notes}
-              </p>
+              <div>
+                <p className="mb-1 text-[11px] font-semibold text-slate-400 uppercase">Substansi</p>
+                <p className="rounded-xl bg-slate-50 px-3.5 py-3 text-[15px] leading-relaxed text-slate-600">
+                  {detail.notes}
+                </p>
+              </div>
             )}
-            <p className="text-xs text-slate-400">
-              Data berasal dari spreadsheet Rencana Kegiatan — perubahan dilakukan di spreadsheet,
-              bukan di aplikasi. Diperbarui {formatRelative(detail.updatedAt)}.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-400">
+              <span>Terakhir diperbarui: {formatDateTime(detail.updatedAt)} WIB</span>
+              <Badge tone="outline">
+                Sumber: {source?.name ?? `Rencana Kegiatan ${activeYear}`}
+              </Badge>
+            </div>
           </div>
         )}
       </Modal>
@@ -349,11 +367,11 @@ function DetailRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-2.5">
-      <Icon className="mt-0.5 size-4 shrink-0 text-slate-400" aria-hidden />
+    <div className="flex items-start gap-3">
+      <Icon className="mt-0.5 size-4.5 shrink-0 text-slate-400" aria-hidden />
       <div className="min-w-0">
         <dt className="text-[11px] font-semibold text-slate-400 uppercase">{label}</dt>
-        <dd className="text-sm text-slate-700">{children}</dd>
+        <dd className="text-[15px] leading-relaxed text-slate-700">{children}</dd>
       </div>
     </div>
   );
@@ -454,15 +472,14 @@ function SummaryView({
   const iso = todayISO();
   const today = itemsToday(items, iso);
   const week = itemsUpcoming(items, 7, iso);
-  const later = itemsUpcoming(items, 60, iso).filter((i) => !week.includes(i)).slice(0, 6);
+  const later = itemsUpcoming(items, 60, iso)
+    .filter((i) => !week.includes(i))
+    .slice(0, 6);
 
   return (
     <div className="grid gap-4 xl:grid-cols-3">
       <Card className="xl:col-span-1">
-        <CardHeader
-          title="Hari Ini"
-          description={formatDate(iso)}
-        />
+        <CardHeader title="Hari Ini" description={formatDate(iso)} />
         <div className="space-y-2 p-4">
           {today.length === 0 ? (
             <EmptyState compact icon={CalendarDays} title="Tidak ada kegiatan hari ini" />

@@ -49,6 +49,71 @@ const MONTHS_ID: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, agu: 8, agt: 8, sep: 9, okt: 10, nov: 11, des: 12,
 };
 
+/** Nama bulan/angka → nomor bulan 1–12; null bila bukan bulan Indonesia dikenal. */
+function monthNumber(token: string): number | null {
+  return MONTHS_ID[token.trim().toLowerCase()] ?? null;
+}
+
+/**
+ * "6", "6 Januari", "6 Januari 2026" → ISO yyyy-MM-dd.
+ * `fallbackMonth`/`year` dipakai bila token tidak memuat bulan/tahun (sisi kiri rentang).
+ */
+function parseDayMonth(token: string, fallbackMonth: number | null, year: number): string | null {
+  const m = /^(\d{1,2})(?:\s+([A-Za-z]+))?(?:\s+(\d{4}))?$/.exec(token.trim());
+  if (!m) return null;
+  const day = Number(m[1]);
+  const mon = m[2] ? monthNumber(m[2]) : fallbackMonth;
+  const yr = m[3] ? Number(m[3]) : year;
+  if (!mon || day < 1 || day > 31) return null;
+  return `${yr}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** Satu rentang: "6 - 9 Januari" | "30 Maret - 2 April" | "6 Januari". */
+function parseSingleRange(part: string, year: number): { start: string; end: string } | null {
+  const seg = part
+    .split(/\s*[-–—]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (seg.length === 0) return null;
+  if (seg.length === 1) {
+    const d = parseDayMonth(seg[0] ?? '', null, year);
+    return d ? { start: d, end: d } : null;
+  }
+  // Sisi kanan biasanya memuat bulan (+tahun opsional); sisi kiri mewarisinya.
+  const right = parseDayMonth(seg[seg.length - 1] ?? '', null, year);
+  if (!right) return null;
+  const left = parseDayMonth(seg[0] ?? '', Number(right.slice(5, 7)), Number(right.slice(0, 4)));
+  if (!left) return null;
+  return left <= right ? { start: left, end: right } : { start: right, end: left };
+}
+
+/**
+ * Rentang tanggal Indonesia dalam satu sel kalender:
+ * "6 - 9 Januari", "30 Maret - 2 April", "8 - 11 Maret & 12 - 15 Maret",
+ * atau tanggal tunggal "6 Januari". Mengembalikan {start,end} ISO (start≤end);
+ * null bila tak ada tanggal terbaca. Tahun default = `year`.
+ */
+export function parseIdDateRange(
+  value: string,
+  year: number,
+): { start: string; end: string } | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  // Beberapa rentang dalam satu sel dipisah "&", ";", atau "dan".
+  const parts = raw
+    .split(/\s*(?:&|;|\bdan\b)\s*/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const dates: string[] = [];
+  for (const part of parts) {
+    const r = parseSingleRange(part, year);
+    if (r) dates.push(r.start, r.end);
+  }
+  if (dates.length === 0) return null;
+  dates.sort();
+  return { start: dates[0] ?? '', end: dates[dates.length - 1] ?? '' };
+}
+
 /** Tanggal → ISO yyyy-MM-dd; null bila tidak valid. */
 export function parseIdDate(value: string): string | null {
   const v = value.trim();
@@ -126,7 +191,18 @@ export interface HeaderRule {
   required: boolean;
   /** Pola dicocokkan terhadap header ternormalisasi. */
   patterns: RegExp[];
+  /**
+   * Pola prioritas — dicoba lebih dulu untuk SELURUH aturan sebelum `patterns`.
+   * Dipakai saat satu sheet punya beberapa kolom mirip (mis. SISWA_AWAL/AKHIR,
+   * SISWA_BERJALAN, SISWA_TOTAL) dan kita ingin mengunci kolom TOTAL, tetapi
+   * tetap punya fallback generik untuk sheet lain. Backward-compatible: aturan
+   * tanpa `preferredPatterns` berperilaku persis seperti sebelumnya.
+   */
+  preferredPatterns?: RegExp[];
 }
+
+/** Jenjang yang tampil pada Dashboard penyaluran (PIP: SD/SMP/SMA/SMK; tanpa TK). */
+export const DASHBOARD_JENJANG = ['SD', 'SMP', 'SMA', 'SMK'] as const;
 
 export const PIP_DETAIL_RULES: HeaderRule[] = [
   { targetField: 'tahun', parserType: 'number', required: false, patterns: [/^tahun/] },
@@ -135,8 +211,21 @@ export const PIP_DETAIL_RULES: HeaderRule[] = [
   { targetField: 'sk_keterangan', parserType: 'text', required: false, patterns: [/keterangan|jenis sk|kategori sk|cutoff|cut off/] },
   { targetField: 'sk_nomor', parserType: 'text', required: false, patterns: [/no(mor)? ?sk|nomor surat/] },
   { targetField: 'sk_tanggal', parserType: 'date', required: false, patterns: [/tanggal ?sk|tgl ?sk/] },
-  { targetField: 'jumlah_siswa', parserType: 'number', required: true, patterns: [/jumlah ?sisw|siswa|penerima/] },
-  { targetField: 'jumlah_dana', parserType: 'currency', required: true, patterns: [/dana|nominal|anggaran|rupiah/] },
+  {
+    targetField: 'jumlah_siswa',
+    parserType: 'number',
+    required: true,
+    // Utamakan kolom TOTAL (SISWA_TOTAL) di atas AWAL/AKHIR & BERJALAN (§3).
+    preferredPatterns: [/siswa ?total|total ?siswa|jumlah ?siswa ?total/],
+    patterns: [/jumlah ?sisw|siswa|penerima/],
+  },
+  {
+    targetField: 'jumlah_dana',
+    parserType: 'currency',
+    required: true,
+    preferredPatterns: [/dana ?total|total ?dana/],
+    patterns: [/dana|nominal|anggaran|rupiah/],
+  },
   { targetField: 'status', parserType: 'text', required: false, patterns: [/^status/] },
   { targetField: 'updated_on', parserType: 'date', required: false, patterns: [/tanggal update|update|pembaruan/] },
   { targetField: 'catatan', parserType: 'text', required: false, patterns: [/catatan|ket$|note/] },
@@ -167,7 +256,7 @@ export const ACTIVITY_RULES: HeaderRule[] = [
   { targetField: 'pic', parserType: 'text', required: false, patterns: [/^pic|penanggung ?jawab|pj$/] },
   { targetField: 'participants', parserType: 'text', required: false, patterns: [/peserta|undangan/] },
   { targetField: 'status', parserType: 'text', required: false, patterns: [/^status/] },
-  { targetField: 'notes', parserType: 'text', required: false, patterns: [/keterangan|catatan|note/] },
+  { targetField: 'notes', parserType: 'text', required: false, patterns: [/substansi|keterangan|catatan|note|deskripsi/] },
   { targetField: 'meeting_link', parserType: 'text', required: false, patterns: [/link ?(rapat|meeting|zoom)|zoom|meet/] },
   { targetField: 'document_link', parserType: 'text', required: false, patterns: [/link ?dokumen|dokumen|berkas|drive/] },
 ];
@@ -181,32 +270,110 @@ export interface DetectedMapping {
 }
 
 /**
- * Cocokkan header aktual terhadap aturan. Header ambigu TIDAK ditebak:
- * hanya kecocokan pola pertama per target field yang dipakai.
+ * Cocokkan header aktual terhadap aturan. Header ambigu TIDAK ditebak.
+ * Dua fase: `preferredPatterns` seluruh aturan lebih dulu (mengunci kolom
+ * spesifik seperti TOTAL), lalu `patterns` generik sebagai fallback.
  */
 export function detectMappings(headers: string[], rules: HeaderRule[]): DetectedMapping[] {
   const result: DetectedMapping[] = [];
   const usedFields = new Set<string>();
   const usedColumns = new Set<number>();
-  for (const rule of rules) {
-    for (let i = 0; i < headers.length; i += 1) {
-      if (usedColumns.has(i) || usedFields.has(rule.targetField)) continue;
-      const header = normalizeHeader(headers[i] ?? '');
-      if (!header) continue;
-      if (rule.patterns.some((p) => p.test(header))) {
-        result.push({
-          detectedHeader: headers[i] ?? '',
-          columnIndex: i,
-          targetField: rule.targetField,
-          parserType: rule.parserType,
-          required: rule.required,
-        });
-        usedFields.add(rule.targetField);
-        usedColumns.add(i);
+  const normalized = headers.map((h) => normalizeHeader(h ?? ''));
+
+  const runPhase = (getPatterns: (rule: HeaderRule) => RegExp[] | undefined) => {
+    for (const rule of rules) {
+      if (usedFields.has(rule.targetField)) continue;
+      const patterns = getPatterns(rule);
+      if (!patterns || patterns.length === 0) continue;
+      for (let i = 0; i < headers.length; i += 1) {
+        if (usedColumns.has(i)) continue;
+        const header = normalized[i] ?? '';
+        if (!header) continue;
+        if (patterns.some((p) => p.test(header))) {
+          result.push({
+            detectedHeader: headers[i] ?? '',
+            columnIndex: i,
+            targetField: rule.targetField,
+            parserType: rule.parserType,
+            required: rule.required,
+          });
+          usedFields.add(rule.targetField);
+          usedColumns.add(i);
+          break;
+        }
       }
     }
-  }
+  };
+
+  runPhase((rule) => rule.preferredPatterns);
+  runPhase((rule) => rule.patterns);
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Matriks ALOKASI 2026 (REKAP PROGRESS) — kuota per jenjang dari baris TOTAL.
+// Sheet ini cross-tab (bukan tabel datar): kita HANYA mengambil kuota/alokasi
+// dari baris TOTAL, bukan realisasi/progres/sisa (§2).
+// ---------------------------------------------------------------------------
+
+const MATRIX_JENJANG = ['TK', 'SD', 'SMP', 'SMA', 'SMK'] as const;
+
+export interface JenjangQuota {
+  siswa: number;
+  dana: number;
+}
+
+/**
+ * Baca kuota per jenjang dari matriks "ALOKASI 2026" pada REKAP PROGRESS:
+ * temukan baris anchor "ALOKASI 2026" (memuat grup SISWA & DANA), petakan kolom
+ * jenjang di baris header berikutnya, lalu ambil nilai pada baris "TOTAL".
+ * Mengembalikan null bila struktur tidak dikenali (pemanggil pakai fallback config).
+ */
+export function parseAlokasiMatrix(values: string[][]): Record<string, JenjangQuota> | null {
+  let anchor = -1;
+  for (let i = 0; i < values.length; i += 1) {
+    if ((values[i] ?? []).some((c) => normalizeHeader(c) === 'alokasi 2026')) {
+      anchor = i;
+      break;
+    }
+  }
+  if (anchor < 0) return null;
+
+  const anchorRow = values[anchor] ?? [];
+  const siswaGroupCol = anchorRow.findIndex((c) => normalizeHeader(c) === 'siswa');
+  const danaGroupCol = anchorRow.findIndex((c) => normalizeHeader(c) === 'dana');
+  if (siswaGroupCol < 0 || danaGroupCol < 0 || danaGroupCol <= siswaGroupCol) return null;
+
+  const headerRow = values[anchor + 1] ?? [];
+  const siswaCol: Record<string, number> = {};
+  const danaCol: Record<string, number> = {};
+  headerRow.forEach((c, idx) => {
+    const key = normalizeHeader(c).toUpperCase();
+    if (!(MATRIX_JENJANG as readonly string[]).includes(key)) return;
+    if (idx >= siswaGroupCol && idx < danaGroupCol) siswaCol[key] = idx;
+    else if (idx >= danaGroupCol) danaCol[key] = idx;
+  });
+
+  let totalRow: string[] | null = null;
+  for (let i = anchor + 1; i < values.length; i += 1) {
+    if (normalizeHeader((values[i] ?? [])[0] ?? '') === 'total') {
+      totalRow = values[i] ?? [];
+      break;
+    }
+  }
+  if (!totalRow) return null;
+
+  const out: Record<string, JenjangQuota> = {};
+  for (const j of MATRIX_JENJANG) {
+    const si = siswaCol[j];
+    const di = danaCol[j];
+    if (si === undefined || di === undefined) return null;
+    const siswa = parseIdNumber(totalRow[si] ?? '');
+    const dana = parseIdNumber(totalRow[di] ?? '');
+    if (siswa === null || dana === null || siswa < 0 || dana < 0) return null;
+    out[j] = { siswa, dana };
+  }
+  return out;
 }
 
 /** Field wajib yang belum terpetakan. */

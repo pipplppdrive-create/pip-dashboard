@@ -19,11 +19,14 @@ import {
 } from './google.js';
 import {
   ACTIVITY_RULES,
+  DASHBOARD_JENJANG,
   detectMappings,
   isNoiseRow,
   normalizeHeader,
   parseActivityStatus,
+  parseAlokasiMatrix,
   parseIdDate,
+  parseIdDateRange,
   parseIdNumber,
   parseIdTime,
   parseJenjang,
@@ -268,7 +271,11 @@ export async function syncSource(
 
   try {
     const bindings = await loadBindings(db, sourceId);
-    const unconfirmed = bindings.filter((b) => b.mapping_status !== 'TERKONFIRMASI');
+    // REKAP PROGRESS (allocation_summary) dibaca sebagai matriks kuota (§2), bukan
+    // lewat mapping kolom — jadi tak perlu konfirmasi & tak memblok sinkronisasi.
+    const unconfirmed = bindings.filter(
+      (b) => b.binding_type !== 'allocation_summary' && b.mapping_status !== 'TERKONFIRMASI',
+    );
     if (unconfirmed.length > 0) {
       status = 'PERLU_VALIDASI';
       message = `Mapping belum dikonfirmasi: ${unconfirmed.map((b) => b.sheet_name).join(', ')}. Buka Detail & mapping lalu konfirmasi.`;
@@ -391,6 +398,46 @@ interface JenjangTotals {
   dana: number;
 }
 
+/**
+ * Kuota/alokasi per jenjang tahun sumber. Prioritas: matriks "ALOKASI 2026"
+ * pada REKAP PROGRESS (baris TOTAL); fallback konfigurasi `distribution_quota`
+ * (dapat diperbarui Admin). HANYA kuota — bukan realisasi/progres/sisa (§2).
+ */
+async function loadQuota(
+  db: DbClient,
+  source: SourceRow,
+  token: string,
+  rekapBinding: BindingRow | undefined,
+): Promise<Map<string, JenjangTotals>> {
+  const map = new Map<string, JenjangTotals>();
+  if (rekapBinding) {
+    try {
+      const values = await fetchSheetValues(
+        token,
+        source.spreadsheet_id,
+        `'${rekapBinding.sheet_name}'`,
+      );
+      const parsed = parseAlokasiMatrix(values);
+      if (parsed) {
+        for (const [jenjang, q] of Object.entries(parsed)) {
+          map.set(jenjang, { siswa: q.siswa, dana: q.dana });
+        }
+        return map;
+      }
+    } catch {
+      // Matriks tak terbaca/tak stabil → pakai fallback config (§2).
+    }
+  }
+  const rows = await db.select<{ jenjang: string; kuota_siswa: string; kuota_dana: string }>(
+    'distribution_quota',
+    `select=jenjang,kuota_siswa,kuota_dana&year=eq.${source.year}`,
+  );
+  for (const r of rows) {
+    map.set(r.jenjang, { siswa: Number(r.kuota_siswa), dana: Number(r.kuota_dana) });
+  }
+  return map;
+}
+
 async function syncPipProgress(
   _env: ServerEnv,
   db: DbClient,
@@ -400,41 +447,33 @@ async function syncPipProgress(
   errors: SyncErrorInput[],
 ): Promise<SyncResult> {
   const detailBinding = bindings.find((b) => b.binding_type === 'detail_realisasi');
-  const rekapBinding = bindings.find((b) => b.binding_type === 'allocation_summary');
-  if (!detailBinding || !rekapBinding) {
-    throw new Error('Binding "Pemberian" dan "REKAP PROGRESS" wajib ada pada sumber penyaluran.');
+  if (!detailBinding) {
+    throw new Error('Binding "Pemberian" wajib ada pada sumber penyaluran.');
   }
+  const rekapBinding = bindings.find((b) => b.binding_type === 'allocation_summary');
 
   const detailMappings = await db.select<MappingRow>(
     'spreadsheet_column_mappings',
     `select=*&binding_id=eq.${detailBinding.id}`,
   );
-  const rekapMappings = await db.select<MappingRow>(
-    'spreadsheet_column_mappings',
-    `select=*&binding_id=eq.${rekapBinding.id}`,
-  );
 
   const detail = await readBinding(token, source.spreadsheet_id, detailBinding);
-  const rekap = await readBinding(token, source.spreadsheet_id, rekapBinding);
-
   const detailCols = resolveColumns(detail.headers, detailMappings);
-  const rekapCols = resolveColumns(rekap.headers, rekapMappings);
-  if (detailCols.missing.length > 0 || rekapCols.missing.length > 0) {
-    // Struktur sheet berubah — jangan timpa data; tandai perlu validasi.
-    await db.update(
-      'spreadsheet_sheet_bindings',
-      `source_id=eq.${source.id}`,
-      { mapping_status: 'PERLU_VALIDASI' },
-    );
+  if (detailCols.missing.length > 0) {
+    // Struktur "Pemberian" berubah — jangan timpa data; tandai perlu validasi.
+    await db.update('spreadsheet_sheet_bindings', `id=eq.${detailBinding.id}`, {
+      mapping_status: 'PERLU_VALIDASI',
+    });
     return {
       rowsRead: 0,
       rowsUpserted: 0,
       status: 'PERLU_VALIDASI',
-      message: `Struktur sheet berubah — kolom hilang: ${[...detailCols.missing, ...rekapCols.missing].join(', ')}. Snapshot valid terakhir dipertahankan.`,
+      message: `Struktur "Pemberian" berubah — kolom hilang: ${detailCols.missing.join(', ')}. Snapshot valid terakhir dipertahankan.`,
     };
   }
 
-  // ---- Baca detail Pemberian (agregat per baris SK — bukan data siswa) ----
+  // ---- Realisasi per jenjang dari Pemberian (kolom TOTAL) — SATU-SATUNYA sumber
+  //      realisasi (§1). Kolom TOTAL sudah final: tidak dijumlah ulang antar-kolom.
   const cols = detailCols.columns;
   const detailTotals = new Map<string, JenjangTotals>();
   const records: Array<Record<string, unknown>> = [];
@@ -502,64 +541,33 @@ async function syncPipProgress(
     });
   }
 
-  // ---- Baca blok kontrol REKAP PROGRESS (hanya blok tahun sumber) ----
-  const rcols = rekapCols.columns;
-  interface ControlRow {
-    jenjang: string;
-    alokasiSiswa: number;
-    alokasiAnggaran: number;
-    realisasiSiswa: number;
-    realisasiDana: number;
-  }
-  const control = new Map<string, ControlRow>();
-  for (let i = 0; i < rekap.rows.length; i += 1) {
-    const row = rekap.rows[i] ?? [];
-    if (isNoiseRow(row)) continue;
-    const jenjang = parseJenjang(cell(row, rcols.get('jenjang')));
-    if (!jenjang || control.has(jenjang)) continue; // blok pertama yang cocok
-    const rowYearRaw = cell(row, rcols.get('tahun'));
-    if (rowYearRaw) {
-      const rowYear = parseIdNumber(rowYearRaw);
-      if (rowYear !== null && rowYear !== source.year) continue;
-    }
-    const alokasiSiswa = parseIdNumber(cell(row, rcols.get('alokasi_siswa')));
-    const alokasiAnggaran = parseIdNumber(cell(row, rcols.get('alokasi_anggaran')));
-    const realisasiSiswa = parseIdNumber(cell(row, rcols.get('realisasi_siswa')));
-    const realisasiDana = parseIdNumber(cell(row, rcols.get('realisasi_dana')));
-    if (alokasiSiswa === null || alokasiAnggaran === null) continue;
-    control.set(jenjang, {
-      jenjang,
-      alokasiSiswa,
-      alokasiAnggaran,
-      realisasiSiswa: realisasiSiswa ?? 0,
-      realisasiDana: realisasiDana ?? 0,
-    });
-  }
-  if (control.size === 0) {
+  // ---- Kuota/alokasi 2026: matriks REKAP (baris TOTAL) → fallback config (§2) ----
+  const quota = await loadQuota(db, source, token, rekapBinding);
+  if (quota.size === 0) {
     return {
       rowsRead,
       rowsUpserted: 0,
       status: 'PERLU_VALIDASI',
       message:
-        'Blok alokasi/pagu untuk tahun sumber tidak ditemukan pada REKAP PROGRESS. Snapshot valid terakhir dipertahankan.',
+        'Kuota/alokasi belum tersedia (matriks REKAP tak terbaca & konfigurasi kuota kosong). Snapshot valid terakhir dipertahankan.',
     };
   }
 
-  // ---- Validasi silang detail vs kontrol (per jenjang + total) ----
-  const validationNotes: Array<Record<string, unknown>> = [];
-  for (const [jenjang, ctl] of control) {
+  // ---- Baris Dashboard per jenjang (SD/SMP/SMA/SMK). Realisasi = Pemberian;
+  //      sisa & progres dihitung aplikasi. Jenjang tanpa data Pemberian → 0 (§3).
+  const snapshotRows = DASHBOARD_JENJANG.map((jenjang) => {
     const det = detailTotals.get(jenjang) ?? { siswa: 0, dana: 0 };
-    const selisihSiswa = det.siswa - ctl.realisasiSiswa;
-    const selisihDana = det.dana - ctl.realisasiDana;
-    if (selisihSiswa !== 0 || Math.abs(selisihDana) > 1) {
-      validationNotes.push({
-        jenjang,
-        selisih_siswa: selisihSiswa,
-        selisih_dana: selisihDana,
-      });
-    }
-  }
-  const valid = validationNotes.length === 0;
+    const q = quota.get(jenjang) ?? { siswa: 0, dana: 0 };
+    return {
+      jenjang,
+      alokasiSiswa: q.siswa,
+      alokasiAnggaran: q.dana,
+      skSiswa: det.siswa,
+      skAnggaran: det.dana,
+      salurSiswa: det.siswa,
+      salurAnggaran: det.dana,
+    };
+  });
 
   // ---- Upsert detail (idempotent) + soft delete baris yang hilang ----
   if (records.length > 0) {
@@ -567,8 +575,7 @@ async function syncPipProgress(
       upsertOn: 'source_id,source_row_key',
     });
   }
-  const keyList = [...seenKeys];
-  if (keyList.length > 0) {
+  if (seenKeys.size > 0) {
     // Baris yang tidak lagi ada di sheet → soft delete (tetap di histori).
     const existing = await db.select<{ id: string; source_row_key: string }>(
       'pip_progress_records',
@@ -583,71 +590,58 @@ async function syncPipProgress(
   }
 
   // ---- Snapshot rekap (histori + fallback) ----
-  const snapshotRows = [...control.values()].map((ctl) => {
-    const det = detailTotals.get(ctl.jenjang) ?? { siswa: 0, dana: 0 };
-    return {
-      jenjang: ctl.jenjang,
-      alokasiSiswa: ctl.alokasiSiswa,
-      alokasiAnggaran: ctl.alokasiAnggaran,
-      skSiswa: det.siswa,
-      skAnggaran: det.dana,
-      salurSiswa: ctl.realisasiSiswa,
-      salurAnggaran: ctl.realisasiDana,
-    };
+  await db.update('pip_progress_snapshots', `source_id=eq.${source.id}&is_last_valid=eq.true`, {
+    is_last_valid: false,
   });
-  if (valid) {
-    await db.update('pip_progress_snapshots', `source_id=eq.${source.id}&is_last_valid=eq.true`, {
-      is_last_valid: false,
-    });
-  }
   await db.insert('pip_progress_snapshots', {
     source_id: source.id,
     source_year: source.year,
     rows: snapshotRows,
     detail_totals: Object.fromEntries(detailTotals),
-    control_totals: Object.fromEntries([...control].map(([k, v]) => [k, v])),
-    validation_status: valid ? 'VALID' : 'PERLU_VALIDASI',
-    validation_notes: validationNotes,
-    is_last_valid: valid,
+    control_totals: Object.fromEntries([...quota].map(([k, v]) => [k, v])),
+    validation_status: 'VALID',
+    validation_notes: [],
+    is_last_valid: true,
   });
 
-  // ---- Snapshot tampilan Dashboard (hanya bila valid — §U, §Y) ----
-  if (valid) {
-    const period = 'Google Sheets';
-    const existing = await db.select<{ id: string }>(
-      'distribution_snapshots',
-      `select=id&year=eq.${source.year}&period=eq.${encodeURIComponent(period)}&status=eq.ACTIVE`,
-    );
-    const note = `Sinkronisasi otomatis dari "${source.name}"`;
-    if (existing[0]) {
-      await db.update('distribution_snapshots', `id=eq.${existing[0].id}`, {
-        rows: snapshotRows,
-        note,
-        updated_at: new Date().toISOString(),
-      });
-    } else {
-      await db.insert('distribution_snapshots', {
-        year: source.year,
-        period,
-        status: 'ACTIVE',
-        rows: snapshotRows,
-        source_file_name: null,
-        note,
-        activated_at: new Date().toISOString(),
-      });
-    }
+  // ---- Snapshot tampilan Dashboard (ACTIVE) — kuota alokasi + realisasi Pemberian ----
+  const period = 'Google Sheets';
+  const existingSnap = await db.select<{ id: string }>(
+    'distribution_snapshots',
+    `select=id&year=eq.${source.year}&period=eq.${encodeURIComponent(period)}&status=eq.ACTIVE`,
+  );
+  const note = `Sinkronisasi otomatis dari "${source.name}" — realisasi Pemberian, kuota alokasi ${source.year}`;
+  if (existingSnap[0]) {
+    await db.update('distribution_snapshots', `id=eq.${existingSnap[0].id}`, {
+      rows: snapshotRows,
+      note,
+      updated_at: new Date().toISOString(),
+    });
+  } else {
+    await db.insert('distribution_snapshots', {
+      year: source.year,
+      period,
+      status: 'ACTIVE',
+      rows: snapshotRows,
+      source_file_name: null,
+      note,
+      activated_at: new Date().toISOString(),
+    });
   }
 
-  const selisihMsg = validationNotes
-    .map((n) => `${String(n.jenjang)}: siswa ${String(n.selisih_siswa)}, dana ${String(n.selisih_dana)}`)
-    .join('; ');
+  // REKAP dibaca sebagai matriks kuota → tandai binding-nya terkonfirmasi (UI rapi).
+  if (rekapBinding && rekapBinding.mapping_status !== 'TERKONFIRMASI') {
+    await db.update('spreadsheet_sheet_bindings', `id=eq.${rekapBinding.id}`, {
+      mapping_status: 'TERKONFIRMASI',
+    });
+  }
+
+  const totalSiswa = [...detailTotals.values()].reduce((a, v) => a + v.siswa, 0);
   return {
     rowsRead,
     rowsUpserted: records.length,
-    status: valid ? 'BERHASIL' : 'PERLU_VALIDASI',
-    message: valid
-      ? `Detail ${records.length} baris SK & rekap ${control.size} jenjang tersinkron.`
-      : `Status: Perlu Validasi. Selisih detail vs kontrol — ${selisihMsg}. Snapshot valid terakhir dipertahankan.`,
+    status: 'BERHASIL',
+    message: `Realisasi Pemberian ${records.length} baris SK (${totalSiswa.toLocaleString('id-ID')} siswa) pada ${detailTotals.size} jenjang; kuota ${source.year} dari REKAP/alokasi.`,
   };
 }
 
@@ -707,14 +701,19 @@ async function syncActivityPlan(
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i] ?? [];
     if (isNoiseRow(row)) continue;
+    const rawDate = cell(row, cols.get('start_date'));
+    // Baris tanpa Tanggal / header bulan yang berulang → bukan baris kegiatan (§4).
+    if (!rawDate || normalizeHeader(rawDate) === 'tanggal') continue;
     const title = cell(row, cols.get('title'));
-    if (!title) continue;
-    const startDate = parseIdDate(cell(row, cols.get('start_date')));
+    if (!title || normalizeHeader(title) === 'nama kegiatan') continue;
+    // Tanggal dapat berupa rentang Indonesia ("6 - 9 Januari") atau tanggal tunggal.
+    const range = parseIdDateRange(rawDate, source.year);
+    const startDate = range ? range.start : parseIdDate(rawDate);
     if (!startDate) {
       errors.push({
         sheet_name: binding.sheet_name,
         row_ref: `baris ${binding.data_start_row + i}`,
-        detail: `Tanggal mulai tidak valid: "${cell(row, cols.get('start_date'))}".`,
+        detail: `Tanggal mulai tidak valid: "${rawDate}".`,
       });
       continue;
     }
@@ -723,8 +722,8 @@ async function syncActivityPlan(
     const year = rowYear ?? Number(startDate.slice(0, 4));
     rowsRead += 1;
 
-    // Jika hanya satu tanggal → tanggal selesai = tanggal mulai (§V).
-    const endDate = parseIdDate(cell(row, cols.get('end_date'))) ?? startDate;
+    // Selesai: kolom eksplisit → akhir rentang → sama dengan mulai (§4/§V).
+    const endDate = parseIdDate(cell(row, cols.get('end_date'))) ?? range?.end ?? startDate;
     const startTime = parseIdTime(cell(row, cols.get('start_time')));
     const endTime = parseIdTime(cell(row, cols.get('end_time')));
 

@@ -105,7 +105,13 @@ describe('attentionReasons', () => {
 
   it('tanpa PIC, terhambat (step BLOCKED), prioritas tinggi', () => {
     const r = attentionReasons(
-      makeTask({ picMainIds: [], picMainId: null, picIds: [], stepId: 'step-blocked', priority: 'TINGGI' }),
+      makeTask({
+        picMainIds: [],
+        picMainId: null,
+        picIds: [],
+        stepId: 'step-blocked',
+        priority: 'TINGGI',
+      }),
       kinds,
       7,
       TODAY,
@@ -233,8 +239,26 @@ describe('trendSeries', () => {
 
 describe('workStats', () => {
   const steps = [
-    { id: 'step-normal', boardId: 'b', name: 'To Do', kind: 'NORMAL' as const, color: '#111', sortOrder: 0, deletedAt: null, version: 1 },
-    { id: 'step-done', boardId: 'b', name: 'Selesai', kind: 'DONE' as const, color: '#222', sortOrder: 1, deletedAt: null, version: 1 },
+    {
+      id: 'step-normal',
+      boardId: 'b',
+      name: 'To Do',
+      kind: 'NORMAL' as const,
+      color: '#111',
+      sortOrder: 0,
+      deletedAt: null,
+      version: 1,
+    },
+    {
+      id: 'step-done',
+      boardId: 'b',
+      name: 'Selesai',
+      kind: 'DONE' as const,
+      color: '#222',
+      sortOrder: 1,
+      deletedAt: null,
+      version: 1,
+    },
   ];
 
   it('menghitung total aktif (tanpa selesai/arsip), jumlah per step, dan tenggat terdekat', () => {

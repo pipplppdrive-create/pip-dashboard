@@ -12,13 +12,13 @@ import { Modal } from '@/components/ui/dialog';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { processAvatarImage } from '@/lib/image';
 import { arrayMove, cn, initialsFromName } from '@/lib/utils';
 import { errorMessage } from '@/services/errors';
 import { getDataService } from '@/services';
 import type { Employee, EmployeeInput } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
 import { useEmployeePhotos, useEmployees } from '@/hooks/queries';
+import { AvatarCropperDialog } from './AvatarCropperDialog';
 
 export function EmployeesSection() {
   const employeesQ = useEmployees(true);
@@ -184,7 +184,9 @@ function EmployeeDialog({
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
-  const [photoBusy, setPhotoBusy] = useState(false);
+  // Cropper: berkas sumber yang sedang diatur sebelum disimpan.
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
   const previewUrlRef = useRef<string | null>(null);
   const getCtx = useActorCtx();
   const queryClient = useQueryClient();
@@ -198,21 +200,20 @@ function EmployeeDialog({
 
   useEffect(() => () => clearPreview(), []);
 
-  async function handlePhotoFile(file: File) {
-    setPhotoBusy(true);
-    try {
-      const blob = await processAvatarImage(file);
-      clearPreview();
-      const url = URL.createObjectURL(blob);
-      previewUrlRef.current = url;
-      setPhotoBlob(blob);
-      setPhotoPreview(url);
-      setPhotoRemoved(false);
-    } catch (err) {
-      notify.error('Foto tidak dapat dipakai', errorMessage(err));
-    } finally {
-      setPhotoBusy(false);
-    }
+  /** Buka cropper untuk berkas terpilih (belum disimpan hingga dikonfirmasi). */
+  function openCropper(file: File) {
+    setCropFile(file);
+    setCropOpen(true);
+  }
+
+  /** Foto sudah dipotong & dikompres di cropper — siapkan preview & blob. */
+  function handleCroppedBlob(blob: Blob) {
+    clearPreview();
+    const url = URL.createObjectURL(blob);
+    previewUrlRef.current = url;
+    setPhotoBlob(blob);
+    setPhotoPreview(url);
+    setPhotoRemoved(false);
   }
 
   useEffect(() => {
@@ -221,6 +222,8 @@ function EmployeeDialog({
       setPhotoBlob(null);
       setPhotoPreview(null);
       setPhotoRemoved(false);
+      setCropOpen(false);
+      setCropFile(null);
       setForm(
         employee
           ? {
@@ -282,151 +285,158 @@ function EmployeeDialog({
     }
   }
 
-  const showPhoto = photoPreview ?? (photoRemoved ? null : photoUrl ?? null);
+  const showPhoto = photoPreview ?? (photoRemoved ? null : (photoUrl ?? null));
 
   return (
-    <Modal
-      open={open}
-      onOpenChange={onOpenChange}
-      title={employee ? 'Ubah Pegawai' : 'Tambah Pegawai'}
-      footer={
-        <>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Batal
-          </Button>
-          <Button onClick={() => void submit()} loading={busy}>
-            Simpan
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <Field
-          label="Foto profil"
-          hint="Otomatis dipotong 1:1, maks 512×512 px, disimpan ≤300 KB. Tanpa foto → avatar bawaan."
-        >
-          <div className="flex items-center gap-3">
-            <span className="inline-flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
-              {showPhoto ? (
-                <img src={showPhoto} alt="Pratinjau foto pegawai" className="size-full object-cover" />
-              ) : (
-                <DefaultAvatar
-                  seed={form.displayName || form.fullName || '?'}
-                  color={form.color}
-                />
-              )}
-            </span>
-            <label className="inline-flex">
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                aria-label="Unggah foto pegawai"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void handlePhotoFile(f);
-                  e.target.value = '';
-                }}
-              />
-              <span
-                className={cn(
-                  'pressable inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50',
-                  photoBusy && 'pointer-events-none opacity-60',
-                )}
-              >
-                <Camera className="size-3.5" aria-hidden />
-                {photoBusy ? 'Memproses…' : showPhoto ? 'Ganti foto' : 'Unggah foto'}
-              </span>
-            </label>
-            {showPhoto && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  clearPreview();
-                  setPhotoBlob(null);
-                  setPhotoPreview(null);
-                  setPhotoRemoved(true);
-                }}
-              >
-                <Trash2 className="size-3.5" aria-hidden />
-                Hapus foto
-              </Button>
-            )}
-          </div>
-        </Field>
-        <Field label="Nama lengkap" required error={error ?? undefined}>
-          <Input
-            value={form.fullName}
-            onChange={(e) => {
-              setForm((f) => ({ ...f, fullName: e.target.value }));
-              setError(null);
-            }}
-            placeholder="cth. Budi Santoso"
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+    <>
+      <AvatarCropperDialog
+        open={cropOpen}
+        file={cropFile}
+        onOpenChange={setCropOpen}
+        onConfirm={handleCroppedBlob}
+      />
+      <Modal
+        open={open}
+        onOpenChange={onOpenChange}
+        title={employee ? 'Ubah Pegawai' : 'Tambah Pegawai'}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Batal
+            </Button>
+            <Button onClick={() => void submit()} loading={busy}>
+              Simpan
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
           <Field
-            label="Tag board"
-            hint="Satu kata, unik antar pegawai aktif. Kosongkan = kata pertama nama."
+            label="Foto profil"
+            hint="Atur posisi & zoom sebelum disimpan (1:1, maks 512×512 px, ≤300 KB). Tanpa foto → avatar bawaan."
           >
+            <div className="flex items-center gap-3">
+              <span className="inline-flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100">
+                {showPhoto ? (
+                  <img
+                    src={showPhoto}
+                    alt="Pratinjau foto pegawai"
+                    className="size-full object-cover"
+                  />
+                ) : (
+                  <DefaultAvatar
+                    seed={form.displayName || form.fullName || '?'}
+                    color={form.color}
+                  />
+                )}
+              </span>
+              <label className="inline-flex">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  aria-label="Unggah foto pegawai"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) openCropper(f);
+                    e.target.value = '';
+                  }}
+                />
+                <span className="pressable inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+                  <Camera className="size-3.5" aria-hidden />
+                  {showPhoto ? 'Ganti foto' : 'Unggah foto'}
+                </span>
+              </label>
+              {showPhoto && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    clearPreview();
+                    setPhotoBlob(null);
+                    setPhotoPreview(null);
+                    setPhotoRemoved(true);
+                  }}
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                  Hapus foto
+                </Button>
+              )}
+            </div>
+          </Field>
+          <Field label="Nama lengkap" required error={error ?? undefined}>
             <Input
-              value={form.displayName}
-              onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-              placeholder="cth. Budi"
+              value={form.fullName}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, fullName: e.target.value }));
+                setError(null);
+              }}
+              placeholder="cth. Budi Santoso"
             />
           </Field>
-          <Field label="Inisial" hint="Kosongkan = otomatis dari nama.">
-            <Input
-              value={form.initials}
-              onChange={(e) => setForm((f) => ({ ...f, initials: e.target.value.toUpperCase() }))}
-              maxLength={3}
-              placeholder="BS"
-            />
-          </Field>
-          <Field label="NIP" hint="Kosongkan bila tidak ada.">
-            <Input
-              value={form.nip ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, nip: e.target.value }))}
-              inputMode="numeric"
-              placeholder="cth. 198102082005011003"
-            />
-          </Field>
-          <Field label="Jabatan">
-            <Input
-              value={form.position}
-              onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))}
-              placeholder="cth. Analis Data"
-            />
-          </Field>
-          <Field label="Instansi/Tim">
-            <Input
-              value={form.team}
-              onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))}
-              placeholder="cth. Puslapdik"
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Tag board"
+              hint="Satu kata, unik antar pegawai aktif. Kosongkan = kata pertama nama."
+            >
+              <Input
+                value={form.displayName}
+                onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
+                placeholder="cth. Budi"
+              />
+            </Field>
+            <Field label="Inisial" hint="Kosongkan = otomatis dari nama.">
+              <Input
+                value={form.initials}
+                onChange={(e) => setForm((f) => ({ ...f, initials: e.target.value.toUpperCase() }))}
+                maxLength={3}
+                placeholder="BS"
+              />
+            </Field>
+            <Field label="NIP" hint="Kosongkan bila tidak ada.">
+              <Input
+                value={form.nip ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, nip: e.target.value }))}
+                inputMode="numeric"
+                placeholder="cth. 198102082005011003"
+              />
+            </Field>
+            <Field label="Jabatan">
+              <Input
+                value={form.position}
+                onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))}
+                placeholder="cth. Analis Data"
+              />
+            </Field>
+            <Field label="Instansi/Tim">
+              <Input
+                value={form.team}
+                onChange={(e) => setForm((f) => ({ ...f, team: e.target.value }))}
+                placeholder="cth. Puslapdik"
+              />
+            </Field>
+          </div>
+          <Field label="Warna avatar">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Warna avatar">
+              {AVATAR_COLOR_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={form.color === key}
+                  aria-label={`Warna ${key}`}
+                  onClick={() => setForm((f) => ({ ...f, color: key }))}
+                  className={cn(
+                    'size-7 cursor-pointer rounded-full transition-transform hover:scale-110',
+                    AVATAR_COLORS[key],
+                    form.color === key && 'ring-2 ring-slate-900 ring-offset-2',
+                  )}
+                />
+              ))}
+            </div>
           </Field>
         </div>
-        <Field label="Warna avatar">
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Warna avatar">
-            {AVATAR_COLOR_KEYS.map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="radio"
-                aria-checked={form.color === key}
-                aria-label={`Warna ${key}`}
-                onClick={() => setForm((f) => ({ ...f, color: key }))}
-                className={cn(
-                  'size-7 cursor-pointer rounded-full transition-transform hover:scale-110',
-                  AVATAR_COLORS[key],
-                  form.color === key && 'ring-2 ring-slate-900 ring-offset-2',
-                )}
-              />
-            ))}
-          </div>
-        </Field>
-      </div>
-    </Modal>
+      </Modal>
+    </>
   );
 }

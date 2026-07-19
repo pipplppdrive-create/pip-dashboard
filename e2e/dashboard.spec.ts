@@ -7,12 +7,12 @@ test.describe('dashboard', () => {
     await loginAsUser(page);
 
     await expect(page.getByRole('heading', { name: 'Penyaluran PIP' })).toBeVisible();
-    // KPI (default: seluruh jenjang, 2026 Termin 1 aktif)
+    // KPI (default: seluruh jenjang, 2026 Termin 1 aktif) — tanpa KPI duplikat
     await expect(page.getByText('18.000.000 siswa')).toBeVisible();
-    await expect(page.getByText('Dana Tersalur').first()).toBeVisible();
+    await expect(page.getByText('Capaian').first()).toBeVisible();
     // Grafik
     await expect(page.getByText('Target vs Realisasi per Jenjang')).toBeVisible();
-    await expect(page.getByText('Tren Penyaluran Siswa')).toBeVisible();
+    await expect(page.getByText('Progres per Jenjang')).toBeVisible();
     // Rekap jenjang
     await expect(page.getByText('Rekap per Jenjang')).toBeVisible();
     const table = page.locator('table');
@@ -20,7 +20,7 @@ test.describe('dashboard', () => {
       await expect(table.getByRole('cell', { name: j, exact: true })).toBeVisible();
     }
     // Waktu pembaruan
-    await expect(page.getByText(/Termin 1 — diperbarui/)).toBeVisible();
+    await expect(page.getByText(/Terakhir diperbarui/)).toBeVisible();
     expect(errors).toEqual([]);
   });
 

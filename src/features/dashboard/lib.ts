@@ -35,8 +35,7 @@ export function totalsFromRows(
   jenjang: JenjangFilter = 'ALL',
 ): DistributionTotals {
   const filtered = jenjang === 'ALL' ? rows : rows.filter((r) => r.jenjang === jenjang);
-  const sum = (fn: (r: DistributionRow) => number) =>
-    filtered.reduce((acc, r) => acc + fn(r), 0);
+  const sum = (fn: (r: DistributionRow) => number) => filtered.reduce((acc, r) => acc + fn(r), 0);
   const alokasiSiswa = sum((r) => r.alokasiSiswa);
   const alokasiAnggaran = sum((r) => r.alokasiAnggaran);
   const salurSiswa = sum((r) => r.salurSiswa);
@@ -84,12 +83,7 @@ export function trendSeries(
 // ---------------------------------------------------------------------------
 
 export type AttentionKey =
-  | 'OVERDUE'
-  | 'DUE_TODAY'
-  | 'BLOCKED'
-  | 'NO_PIC'
-  | 'STALE'
-  | 'HIGH_PRIORITY';
+  'OVERDUE' | 'DUE_TODAY' | 'BLOCKED' | 'NO_PIC' | 'STALE' | 'HIGH_PRIORITY';
 
 export interface AttentionReason {
   key: AttentionKey;

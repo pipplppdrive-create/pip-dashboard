@@ -14,15 +14,14 @@ export function RekapJenjangTable({ rows, highlight }: RekapJenjangTableProps) {
   const total = totalsFromRows(rows);
   return (
     <div className="scrollbar-thin overflow-x-auto">
-      <table className="w-full min-w-[760px] text-sm">
+      <table className="w-full min-w-[680px] text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-left text-[11px] font-bold tracking-wide text-slate-500 uppercase">
             <th className="py-2.5 pr-3">Jenjang</th>
             <th className="tnum px-3 py-2.5 text-right">Alokasi</th>
             <th className="tnum px-3 py-2.5 text-right">SK Pemberian</th>
-            <th className="tnum px-3 py-2.5 text-right">Tersalur</th>
             <th className="tnum px-3 py-2.5 text-right">Sisa</th>
-            <th className="tnum px-3 py-2.5 text-right">Dana Tersalur</th>
+            <th className="tnum px-3 py-2.5 text-right">Dana SK</th>
             <th className="w-44 px-3 py-2.5">Progres Siswa</th>
             <th className="tnum px-3 py-2.5 text-right">Progres Dana</th>
           </tr>
@@ -41,9 +40,8 @@ export function RekapJenjangTable({ rows, highlight }: RekapJenjangTableProps) {
               >
                 <td className="py-2.5 pr-3 font-bold text-slate-800">{r.jenjang}</td>
                 <td className="tnum px-3 py-2.5 text-right">{formatNumber(r.alokasiSiswa)}</td>
-                <td className="tnum px-3 py-2.5 text-right">{formatNumber(r.skSiswa)}</td>
                 <td className="tnum px-3 py-2.5 text-right font-semibold text-slate-900">
-                  {formatNumber(r.salurSiswa)}
+                  {formatNumber(r.skSiswa)}
                 </td>
                 <td className="tnum px-3 py-2.5 text-right">
                   {formatNumber(r.alokasiSiswa - r.salurSiswa)}
@@ -70,12 +68,7 @@ export function RekapJenjangTable({ rows, highlight }: RekapJenjangTableProps) {
             <td className="tnum px-3 py-2.5 text-right font-bold">
               {formatNumber(total.alokasiSiswa)}
             </td>
-            <td className="tnum px-3 py-2.5 text-right font-bold">
-              {formatNumber(total.skSiswa)}
-            </td>
-            <td className="tnum px-3 py-2.5 text-right font-bold">
-              {formatNumber(total.salurSiswa)}
-            </td>
+            <td className="tnum px-3 py-2.5 text-right font-bold">{formatNumber(total.skSiswa)}</td>
             <td className="tnum px-3 py-2.5 text-right font-bold">
               {formatNumber(total.sisaSiswa)}
             </td>

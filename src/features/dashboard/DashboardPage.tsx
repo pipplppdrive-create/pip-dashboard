@@ -14,21 +14,19 @@ import {
   useActiveSnapshot,
   useAppSettings,
   useDistributionScopes,
-  useSnapshots,
   useSources,
   useSteps,
   useTasks,
 } from '@/hooks/queries';
 import { DistributionKpis } from './components/DistributionKpis';
+import { ProgresJenjangDonuts } from './components/ProgresJenjangDonuts';
 import { RekapJenjangTable } from './components/RekapJenjangTable';
 import { TargetRealisasiChart } from './components/TargetRealisasiChart';
-import { TrendChart } from './components/TrendChart';
 import { WorkStats } from './components/WorkStats';
 import {
   attentionReasons,
   stepKindMap,
   totalsFromRows,
-  trendSeries,
   workStats,
   type JenjangFilter,
 } from './lib';
@@ -59,7 +57,6 @@ export default function DashboardPage() {
 
   const year = yearFilter ?? settingsQ.data?.activeYear;
   const snapshotQ = useActiveSnapshot(year, periodFilter || undefined);
-  const snapshotsQ = useSnapshots();
   const stepsQ = useSteps();
   const tasksQ = useTasks();
 
@@ -75,8 +72,7 @@ export default function DashboardPage() {
     );
     const scoped = year ? candidates.filter((s) => s.year === year) : candidates;
     return (
-      scoped.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || b.year - a.year)[0] ??
-      null
+      scoped.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || b.year - a.year)[0] ?? null
     );
   }, [sourcesQ.data, year]);
 
@@ -102,15 +98,8 @@ export default function DashboardPage() {
 
   const chartRows = useMemo(() => {
     if (!snapshot) return [];
-    return jenjang === 'ALL'
-      ? snapshot.rows
-      : snapshot.rows.filter((r) => r.jenjang === jenjang);
+    return jenjang === 'ALL' ? snapshot.rows : snapshot.rows.filter((r) => r.jenjang === jenjang);
   }, [snapshot, jenjang]);
-
-  const trend = useMemo(() => {
-    if (!snapshot || !snapshotsQ.data) return [];
-    return trendSeries(snapshotsQ.data, snapshot.year, snapshot.period, jenjang);
-  }, [snapshot, snapshotsQ.data, jenjang]);
 
   // ----- Seksi pekerjaan (ringkasan eksekutif) -----
   const steps = useMemo(() => stepsQ.data ?? [], [stepsQ.data]);
@@ -121,13 +110,11 @@ export default function DashboardPage() {
   const attentionCount = useMemo(() => {
     const kinds = stepKindMap(steps);
     const staleDays = settings?.staleDays ?? 7;
-    return (tasks as Task[]).filter(
-      (t) => attentionReasons(t, kinds, staleDays, today).length > 0,
-    ).length;
+    return (tasks as Task[]).filter((t) => attentionReasons(t, kinds, staleDays, today).length > 0)
+      .length;
   }, [steps, tasks, settings?.staleDays, today]);
 
-  const distributionLoading =
-    settingsQ.isLoading || snapshotQ.isLoading || scopesQ.isLoading;
+  const distributionLoading = settingsQ.isLoading || snapshotQ.isLoading || scopesQ.isLoading;
   const distributionError = snapshotQ.isError ? snapshotQ.error : null;
 
   return (
@@ -141,9 +128,9 @@ export default function DashboardPage() {
             </h2>
             {snapshot && (
               <p className="text-xs text-slate-500">
-                {snapshot.year} · {snapshot.period} — diperbarui{' '}
-                <span title={formatDateTime(snapshot.activatedAt ?? snapshot.updatedAt)}>
-                  {formatRelative(snapshot.activatedAt ?? snapshot.updatedAt)}
+                Tahun anggaran {snapshot.year} · Terakhir diperbarui{' '}
+                <span title={formatRelative(snapshot.activatedAt ?? snapshot.updatedAt)}>
+                  {formatDateTime(snapshot.activatedAt ?? snapshot.updatedAt)} WIB
                 </span>
               </p>
             )}
@@ -155,7 +142,9 @@ export default function DashboardPage() {
                   </span>
                   <span>
                     · sinkron{' '}
-                    {pipSource.lastSyncedAt ? formatRelative(pipSource.lastSyncedAt) : 'belum pernah'}
+                    {pipSource.lastSyncedAt
+                      ? formatRelative(pipSource.lastSyncedAt)
+                      : 'belum pernah'}
                   </span>
                   <span
                     className={
@@ -182,7 +171,11 @@ export default function DashboardPage() {
             </p>
           </div>
           {/* Filter: tahun, periode, jenjang */}
-          <div className="flex flex-wrap items-end gap-2" role="group" aria-label="Filter penyaluran">
+          <div
+            className="flex flex-wrap items-end gap-2"
+            role="group"
+            aria-label="Filter penyaluran"
+          >
             <Field label="Tahun" className="w-28">
               <Select
                 value={year ?? ''}
@@ -209,10 +202,7 @@ export default function DashboardPage() {
               </Select>
             </Field>
             <Field label="Jenjang" className="w-32">
-              <Select
-                value={jenjang}
-                onChange={(e) => setJenjang(e.target.value as JenjangFilter)}
-              >
+              <Select value={jenjang} onChange={(e) => setJenjang(e.target.value as JenjangFilter)}>
                 <option value="ALL">Semua</option>
                 {JENJANG_LIST.map((j) => (
                   <option key={j} value={j}>
@@ -257,11 +247,11 @@ export default function DashboardPage() {
               </Card>
               <Card>
                 <CardHeader
-                  title="Tren Penyaluran Siswa"
-                  description={`Riwayat pembaruan data ${snapshot.year} · ${snapshot.period}`}
+                  title="Progres per Jenjang"
+                  description="Realisasi SK Pemberian terhadap alokasi"
                 />
                 <div className="p-4 pt-2">
-                  <TrendChart points={trend} />
+                  <ProgresJenjangDonuts rows={chartRows} />
                 </div>
               </Card>
             </div>

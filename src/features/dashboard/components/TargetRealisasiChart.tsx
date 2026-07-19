@@ -19,19 +19,24 @@ interface TargetRealisasiChartProps {
 
 /**
  * Target vs realisasi per jenjang (jumlah siswa).
- * Tiga tahap satu funnel → ramp ordinal satu hue (bukan warna kategorikal).
- * Nilai kunci (Tersalur) diberi label langsung agar terbaca tanpa hover.
+ * Alokasi vs SK Pemberian (= realisasi) → ramp ordinal satu hue (bukan warna
+ * kategorikal). Seri "Tersalur" tidak ditampilkan karena nilainya identik
+ * dengan SK Pemberian pada data produksi. SK Pemberian diberi label langsung
+ * agar angka kunci terbaca tanpa hover.
  */
 export function TargetRealisasiChart({ rows }: TargetRealisasiChartProps) {
   const data = rows.map((r) => ({
     jenjang: r.jenjang,
     Alokasi: r.alokasiSiswa,
     'SK Pemberian': r.skSiswa,
-    Tersalur: r.salurSiswa,
   }));
 
   return (
-    <div className="h-64 w-full 2xl:h-72" role="img" aria-label="Grafik target dibanding realisasi siswa per jenjang">
+    <div
+      className="h-64 w-full 2xl:h-72"
+      role="img"
+      aria-label="Grafik target dibanding realisasi siswa per jenjang"
+    >
       <ResponsiveContainer>
         <BarChart data={data} margin={{ top: 18, right: 8, left: 0, bottom: 0 }} barGap={2}>
           <CartesianGrid vertical={false} stroke={CHART_INK.grid} />
@@ -67,25 +72,18 @@ export function TargetRealisasiChart({ rows }: TargetRealisasiChartProps) {
             dataKey="Alokasi"
             fill={ORDINAL_RAMP.alokasi}
             radius={[4, 4, 0, 0]}
-            maxBarSize={30}
+            maxBarSize={38}
             isAnimationActive={false}
           />
           <Bar
             dataKey="SK Pemberian"
             fill={ORDINAL_RAMP.sk}
             radius={[4, 4, 0, 0]}
-            maxBarSize={30}
-            isAnimationActive={false}
-          />
-          <Bar
-            dataKey="Tersalur"
-            fill={ORDINAL_RAMP.salur}
-            radius={[4, 4, 0, 0]}
-            maxBarSize={30}
+            maxBarSize={38}
             isAnimationActive={false}
           >
             <LabelList
-              dataKey="Tersalur"
+              dataKey="SK Pemberian"
               position="top"
               formatter={(v: number) => formatCompactNumber(v)}
               style={{ fill: CHART_INK.label, fontSize: 11, fontWeight: 700 }}

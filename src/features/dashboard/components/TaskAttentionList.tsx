@@ -37,7 +37,9 @@ export function TaskAttentionList({
 }: TaskAttentionListProps) {
   const navigate = useNavigate();
   if (items.length === 0) {
-    return <EmptyState compact icon={emptyIcon} title={emptyTitle} description={emptyDescription} />;
+    return (
+      <EmptyState compact icon={emptyIcon} title={emptyTitle} description={emptyDescription} />
+    );
   }
   const byId = new Map(employees.map((e) => [e.id, e]));
   const shown = items.slice(0, limit);

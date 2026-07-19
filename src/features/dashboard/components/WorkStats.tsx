@@ -55,7 +55,7 @@ function StatCard({
         <span
           aria-hidden
           className="absolute inset-x-0 top-0 h-1"
-          style={{ backgroundColor: tone === 'warning' ? '#d97706' : accent ?? '#cbd5e1' }}
+          style={{ backgroundColor: tone === 'warning' ? '#d97706' : (accent ?? '#cbd5e1') }}
         />
       )}
       <div className="flex items-center justify-between gap-2">
