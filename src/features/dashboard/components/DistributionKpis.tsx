@@ -22,83 +22,100 @@ export function DistributionKpis({
   skCount: number | null;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Card className="flex flex-col justify-center p-4 short:p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Alokasi</p>
-            <p className="tnum mt-1 text-2xl font-extrabold text-slate-900 sm:text-xl xl:text-2xl 2xl:text-3xl short:text-xl">
-              {formatNumber(totals.alokasiSiswa)} <span className="text-base font-bold">siswa</span>
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Anggaran {formatRupiahCompact(totals.alokasiAnggaran)}
-            </p>
-          </div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      {/* Alokasi */}
+      <Card className="flex flex-col justify-between gap-2.5 p-4 tall:gap-2 tall:p-3.5 short:gap-2 short:p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Alokasi</p>
           <span
             aria-hidden
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"
           >
-            <GraduationCap className="size-4.5" />
+            <GraduationCap className="size-5" />
           </span>
+        </div>
+        <div>
+          <p className="tnum text-3xl leading-none font-extrabold text-slate-900 2xl:text-4xl">
+            {formatNumber(totals.alokasiSiswa)}{' '}
+            <span className="text-base font-bold text-slate-500">siswa</span>
+          </p>
+          <p className="mt-1.5 text-sm text-slate-500">
+            Anggaran{' '}
+            <span className="font-semibold text-slate-700">
+              {formatRupiahCompact(totals.alokasiAnggaran)}
+            </span>
+          </p>
         </div>
       </Card>
 
-      <Card className="flex flex-col justify-center p-4 short:p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-              SK Pemberian
-            </p>
-            <p className="tnum mt-1 text-2xl font-extrabold text-slate-900 sm:text-xl xl:text-2xl 2xl:text-3xl short:text-xl">
-              {formatNumber(totals.skSiswa)} <span className="text-base font-bold">siswa</span>
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Dana {formatRupiahCompact(totals.skAnggaran)}
-              {skCount !== null && (
-                <>
-                  {' · '}
-                  <span className="font-semibold text-slate-700">
-                    {formatNumber(skCount)} SK
-                  </span>{' '}
-                  diterbitkan
-                </>
-              )}
-            </p>
-          </div>
+      {/* SK Pemberian */}
+      <Card className="flex flex-col justify-between gap-2.5 p-4 tall:gap-2 tall:p-3.5 short:gap-2 short:p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+            SK Pemberian
+          </p>
           <span
             aria-hidden
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"
           >
-            <BadgeCheck className="size-4.5" />
+            <BadgeCheck className="size-5" />
           </span>
+        </div>
+        <div>
+          <p className="tnum text-3xl leading-none font-extrabold text-slate-900 2xl:text-4xl">
+            {formatNumber(totals.skSiswa)}{' '}
+            <span className="text-base font-bold text-slate-500">siswa</span>
+          </p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-500">
+            <span>
+              Dana{' '}
+              <span className="font-semibold text-slate-700">
+                {formatRupiahCompact(totals.skAnggaran)}
+              </span>
+            </span>
+            {skCount !== null && (
+              <span className="tnum inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">
+                {formatNumber(skCount)} SK terbit
+              </span>
+            )}
+          </p>
         </div>
       </Card>
 
-      <Card className="flex flex-col justify-center p-4 short:p-3">
-        <div className="flex items-start justify-between gap-2">
+      {/* Capaian */}
+      <Card className="flex flex-col justify-between gap-2.5 p-4 tall:gap-2 tall:p-3.5 short:gap-2 short:p-3.5">
+        <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Capaian</p>
           <span
             aria-hidden
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-success-50 text-success-600"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-success-50 text-success-600"
           >
-            <Target className="size-4.5" />
+            <Target className="size-5" />
           </span>
         </div>
-        <div className="mt-1.5 space-y-2 short:mt-1 short:space-y-1.5">
+        <div className="space-y-2">
           <div>
-            <p className="mb-0.5 text-xs font-medium text-slate-500">Siswa</p>
-            <ProgressBar value={totals.progresSiswa * 100} showValue label="Progres siswa" />
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="text-xs font-medium text-slate-500">Progres siswa</span>
+              <span className="tnum text-sm font-bold text-slate-800">
+                {formatPercent(totals.progresSiswa, 0)}
+              </span>
+            </div>
+            <ProgressBar value={totals.progresSiswa * 100} label="Progres siswa" />
           </div>
           <div>
-            <p className="mb-0.5 text-xs font-medium text-slate-500">Dana</p>
-            <ProgressBar value={totals.progresDana * 100} showValue label="Progres dana" />
+            <div className="mb-1 flex items-baseline justify-between">
+              <span className="text-xs font-medium text-slate-500">Progres dana</span>
+              <span className="tnum text-sm font-bold text-slate-800">
+                {formatPercent(totals.progresDana, 0)}
+              </span>
+            </div>
+            <ProgressBar value={totals.progresDana * 100} label="Progres dana" />
           </div>
         </div>
-        <p className="tnum mt-1.5 text-xs text-slate-500">
-          Sisa {formatNumber(totals.sisaSiswa)} siswa · {formatRupiahCompact(totals.sisaAnggaran)}{' '}
-          <span className="text-slate-400">
-            ({formatPercent(1 - totals.progresSiswa, 0)} siswa)
-          </span>
+        <p className="tnum text-xs text-slate-500">
+          Sisa {formatNumber(totals.sisaSiswa)} siswa ·{' '}
+          {formatRupiahCompact(totals.sisaAnggaran)}
         </p>
       </Card>
     </div>

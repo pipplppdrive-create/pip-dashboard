@@ -8,6 +8,14 @@
  */
 @custom-variant short (@media (min-width: 64rem) and (max-height: 56.25rem));
 
+/*
+ * Varian "tall": viewport cukup tinggi (≥ 960px) — mis. TV/monitor 1920×1080.
+ * Dashboard hanya "dikunci" satu layar tanpa scroll pada layar setinggi ini;
+ * pada layar lebih pendek (1440×900, 1366×768) Dashboard mengalir natural dan
+ * boleh menggulir pendek agar chart & teks tetap besar dan terbaca.
+ */
+@custom-variant tall (@media (min-height: 60rem));
+
 /* ============================================================
    Design tokens — Dashboard PIP Puslapdik
    ============================================================ */

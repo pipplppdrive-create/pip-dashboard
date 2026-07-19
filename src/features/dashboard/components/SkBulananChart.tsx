@@ -35,11 +35,14 @@ interface SkBulananChartProps {
 }
 
 /**
- * Penerbitan SK per bulan (Jan–Des) — bar bertumpuk per jenjang.
+ * Penerbitan SK per bulan — bar bertumpuk per jenjang.
  * Satu nomor SK unik dihitung SATU kali pada bulan tanggal SK paling awal;
  * SK tanpa tanggal valid di luar chart (dilaporkan sebagai catatan).
- * Warna kategorikal jenjang berurutan tetap; angka eksak per jenjang selalu
- * tersedia di tabel Rekap per Jenjang (aturan relief kontras).
+ *
+ * Rentang bulan dipangkas: hanya Jan s.d. bulan terakhir yang memiliki SK
+ * ditampilkan, sehingga bulan-bulan kosong di ujung tahun tidak memampatkan
+ * batang. Warna kategorikal jenjang berurutan tetap; angka eksak per jenjang
+ * selalu tersedia di tabel Rekap per Jenjang (aturan relief kontras).
  */
 export function SkBulananChart({ stats }: SkBulananChartProps) {
   if (stats.totalSk === 0) {
@@ -56,36 +59,51 @@ export function SkBulananChart({ stats }: SkBulananChartProps) {
   const activeJenjang = JENJANG_LIST.filter((j) =>
     stats.perMonth.some((m) => (m.perJenjang[j] ?? 0) > 0),
   );
-  const data = stats.perMonth.map((m) => ({
+
+  // Pangkas bulan kosong di ujung: tampilkan Jan s.d. bulan terakhir yang
+  // memiliki SK (minimal 3 bulan agar batang tidak terlihat kesepian).
+  const lastMonthWithData = stats.perMonth.reduce(
+    (last, m) => (m.total > 0 ? m.month : last),
+    1,
+  );
+  const monthsShown = Math.max(lastMonthWithData, 3);
+
+  const data = stats.perMonth.slice(0, monthsShown).map((m) => ({
     bulan: MONTH_LABELS[m.month - 1],
     total: m.total,
     ...Object.fromEntries(activeJenjang.map((j) => [j, m.perJenjang[j] ?? 0])),
   }));
+  const peak = Math.max(...data.map((d) => d.total), 0);
+  // Beri kepala ruang di atas batang tertinggi agar label total tidak terpotong.
+  const yMax = peak > 0 ? Math.ceil((peak * 1.18) / 10) * 10 : 10;
   const labelHost: Jenjang | undefined = activeJenjang[activeJenjang.length - 1];
 
   return (
-    <div className="flex flex-col lg:h-full lg:min-h-0">
+    <div className="flex h-full min-h-0 flex-col">
       <div
-        className="h-56 sm:h-64 lg:h-auto lg:min-h-0 lg:flex-1"
+        className="min-h-0 flex-1"
         role="img"
         aria-label={`Grafik penerbitan SK per bulan: total ${stats.totalSk} SK unik`}
       >
         <ResponsiveContainer>
-          <BarChart data={data} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+          <BarChart data={data} margin={{ top: 20, right: 12, left: 4, bottom: 4 }} barCategoryGap="24%">
             <CartesianGrid vertical={false} stroke={CHART_INK.grid} />
             <XAxis
               dataKey="bulan"
               axisLine={false}
               tickLine={false}
               interval={0}
-              tick={{ fill: CHART_INK.axis, fontSize: 11, fontWeight: 600 }}
+              tickMargin={10}
+              tick={{ fill: CHART_INK.axis, fontSize: 13, fontWeight: 600 }}
             />
             <YAxis
-              width={30}
+              width={34}
+              domain={[0, yMax]}
               axisLine={false}
               tickLine={false}
               allowDecimals={false}
-              tick={{ fill: CHART_INK.axis, fontSize: 11 }}
+              tickCount={5}
+              tick={{ fill: CHART_INK.axis, fontSize: 12 }}
             />
             <Tooltip
               cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
@@ -99,8 +117,8 @@ export function SkBulananChart({ stats }: SkBulananChartProps) {
             />
             <Legend
               iconType="circle"
-              iconSize={8}
-              wrapperStyle={{ fontSize: 12, color: CHART_INK.label }}
+              iconSize={9}
+              wrapperStyle={{ fontSize: 12, fontWeight: 600, color: CHART_INK.label, paddingTop: 6 }}
             />
             {activeJenjang.map((j) => (
               <Bar
@@ -110,16 +128,17 @@ export function SkBulananChart({ stats }: SkBulananChartProps) {
                 fill={JENJANG_COLORS[j]}
                 stroke="#ffffff"
                 strokeWidth={1}
-                maxBarSize={30}
+                maxBarSize={56}
                 isAnimationActive={false}
-                radius={j === labelHost ? [3, 3, 0, 0] : undefined}
+                radius={j === labelHost ? [4, 4, 0, 0] : undefined}
               >
                 {j === labelHost && (
                   <LabelList
                     dataKey="total"
                     position="top"
+                    offset={8}
                     formatter={(v: number) => (v > 0 ? v : '')}
-                    style={{ fill: CHART_INK.label, fontSize: 11, fontWeight: 700 }}
+                    style={{ fill: CHART_INK.label, fontSize: 13, fontWeight: 800 }}
                   />
                 )}
               </Bar>

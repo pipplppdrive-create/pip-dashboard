@@ -23,17 +23,17 @@ import { skStats, totalsFromRows, type JenjangFilter } from './lib';
 
 function SectionSkeleton() {
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-28" />
+          <Skeleton key={i} className="h-30" />
         ))}
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <Skeleton className="h-64" />
-        <Skeleton className="h-64" />
+      <div className="grid gap-4 lg:grid-cols-12">
+        <Skeleton className="h-[340px] lg:col-span-7" />
+        <Skeleton className="h-[340px] lg:col-span-5" />
       </div>
-      <Skeleton className="h-52" />
+      <Skeleton className="h-64" />
     </div>
   );
 }
@@ -114,10 +114,7 @@ export default function DashboardPage() {
   const distributionError = snapshotQ.isError ? snapshotQ.error : null;
 
   return (
-    <section
-      aria-labelledby="judul-penyaluran"
-      className="flex flex-col gap-3 lg:h-[calc(100dvh-8.75rem)] lg:min-h-[500px] 2xl:h-[calc(100dvh-9.25rem)] short:gap-2"
-    >
+    <section aria-labelledby="judul-penyaluran" className="flex flex-col gap-4 short:gap-3 tall:gap-3">
       {/* Header seksi: judul, status data, filter */}
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
         <div>
@@ -225,24 +222,22 @@ export default function DashboardPage() {
           <div className="shrink-0">
             <DistributionKpis totals={totals} skCount={hasSkDetail ? sk.totalSk : null} />
           </div>
-          <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-12 short:gap-2">
-            <Card className="flex flex-col lg:col-span-7 lg:overflow-hidden">
+          <div className="grid gap-4 lg:grid-cols-12">
+            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-7 tall:h-[312px]">
               <CardHeader
                 title="Penerbitan SK per Bulan"
                 description="Jumlah nomor SK unik berdasarkan tanggal SK — sheet Pemberian"
-                className="short:[&_p]:hidden"
               />
-              <div className="min-h-0 flex-1 p-4 pt-2 short:p-3 short:pt-1">
+              <div className="min-h-0 flex-1 p-4 pt-1">
                 <SkBulananChart stats={sk} />
               </div>
             </Card>
-            <Card className="flex flex-col lg:col-span-5 lg:overflow-hidden">
+            <Card className="flex h-[320px] flex-col overflow-hidden lg:col-span-5 tall:h-[312px]">
               <CardHeader
                 title="Progres per Jenjang"
                 description="Realisasi SK Pemberian terhadap alokasi siswa"
-                className="short:[&_p]:hidden"
               />
-              <div className="min-h-0 flex-1 p-4 pt-2 short:p-3 short:pt-1">
+              <div className="min-h-0 flex-1 p-4 pt-2">
                 <ProgresJenjangDonuts rows={chartRows} />
               </div>
             </Card>
@@ -251,9 +246,8 @@ export default function DashboardPage() {
             <CardHeader
               title="Rekap per Jenjang"
               description="Alokasi, SK Pemberian, jumlah SK unik, dana, dan progres"
-              className="short:[&_p]:hidden"
             />
-            <div className="p-4 pt-2 short:p-3 short:pt-1">
+            <div className="p-4 pt-2">
               <RekapJenjangTable
                 rows={snapshot.rows}
                 highlight={jenjang}
