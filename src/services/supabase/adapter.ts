@@ -30,6 +30,7 @@ import type {
   ChangeTopic,
   DataService,
   GoogleConnectionStatus,
+  PipSkRecord,
   Role,
   SessionInfo,
   Step,
@@ -139,8 +140,26 @@ async function requireAdmin(): Promise<{ userId: string; role: Role; account: st
 
 function deviceLabel(): string {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-  const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-  const os = /Windows/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Perangkat';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /Chrome\//.test(ua)
+      ? 'Chrome'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Safari\//.test(ua)
+          ? 'Safari'
+          : 'Browser';
+  const os = /Windows/.test(ua)
+    ? 'Windows'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /iPhone|iPad/.test(ua)
+        ? 'iOS'
+        : /Mac OS/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : 'Perangkat';
   return `${browser} · ${os}`;
 }
 
@@ -206,8 +225,10 @@ async function assertActor(ctx: ActorContext): Promise<string> {
     .eq('id', ctx.employeeId)
     .maybeSingle();
   if (error) wrap(error, 'Gagal memeriksa pegawai pelaku');
-  if (!data) throw new ValidationError('Pegawai pelaku tidak ditemukan. Pilih pegawai pelaku Anda.');
-  if (!data.active) throw new ValidationError('Pegawai pelaku nonaktif tidak dapat melakukan perubahan.');
+  if (!data)
+    throw new ValidationError('Pegawai pelaku tidak ditemukan. Pilih pegawai pelaku Anda.');
+  if (!data.active)
+    throw new ValidationError('Pegawai pelaku nonaktif tidak dapat melakukan perubahan.');
   return ctx.employeeId;
 }
 
@@ -322,10 +343,7 @@ export const supabaseAdapter: DataService = {
       }
       // Heartbeat (throttle 5 menit)
       if (Date.now() - Date.parse(session.lastActiveAt) > 5 * 60_000) {
-        await sb
-          .from('device_sessions')
-          .update({ last_active_at: nowISO() })
-          .eq('id', session.id);
+        await sb.from('device_sessions').update({ last_active_at: nowISO() }).eq('id', session.id);
       }
       return { session, role: info.role };
     },
@@ -522,12 +540,18 @@ export const supabaseAdapter: DataService = {
         .select()
         .single();
       if (error || !data) {
-        await sb.storage.from('employee-photos').remove([path]).catch(() => undefined);
+        await sb.storage
+          .from('employee-photos')
+          .remove([path])
+          .catch(() => undefined);
         wrap(error, 'Gagal menyimpan foto pegawai');
       }
       // Hapus foto lama setelah foto baru tersimpan (aman bila gagal).
       if (prev.avatarPath && prev.avatarPath !== path) {
-        await sb.storage.from('employee-photos').remove([prev.avatarPath]).catch(() => undefined);
+        await sb.storage
+          .from('employee-photos')
+          .remove([prev.avatarPath])
+          .catch(() => undefined);
       }
       const emp = toEmployee(data as EmployeeRow);
       await auditWrite({
@@ -559,7 +583,10 @@ export const supabaseAdapter: DataService = {
         .single();
       if (error || !data) wrap(error, 'Gagal menghapus foto pegawai');
       if (prev.avatarPath) {
-        await sb.storage.from('employee-photos').remove([prev.avatarPath]).catch(() => undefined);
+        await sb.storage
+          .from('employee-photos')
+          .remove([prev.avatarPath])
+          .catch(() => undefined);
       }
       const emp = toEmployee(data as EmployeeRow);
       await auditWrite({
@@ -905,7 +932,10 @@ export const supabaseAdapter: DataService = {
       const attachments = await supabaseAdapter.attachments.list(id);
       const sb = getSupabase();
       if (attachments.length > 0) {
-        const { data: rows } = await sb.from('attachments').select('storage_path').eq('task_id', id);
+        const { data: rows } = await sb
+          .from('attachments')
+          .select('storage_path')
+          .eq('task_id', id);
         const paths = ((rows ?? []) as Array<{ storage_path: string }>).map((r) => r.storage_path);
         if (paths.length > 0) await sb.storage.from('lampiran').remove(paths);
       }
@@ -993,7 +1023,29 @@ export const supabaseAdapter: DataService = {
       const settings = await supabaseAdapter.settings.get();
       const name = sanitizeFileName(file.name);
       const ext = fileExtension(name);
-      const BLOCKED = new Set(['exe','bat','cmd','com','msi','scr','pif','sh','ps1','psm1','js','mjs','vbs','vbe','wsf','jar','apk','app','dll','so','dylib']);
+      const BLOCKED = new Set([
+        'exe',
+        'bat',
+        'cmd',
+        'com',
+        'msi',
+        'scr',
+        'pif',
+        'sh',
+        'ps1',
+        'psm1',
+        'js',
+        'mjs',
+        'vbs',
+        'vbe',
+        'wsf',
+        'jar',
+        'apk',
+        'app',
+        'dll',
+        'so',
+        'dylib',
+      ]);
       if (BLOCKED.has(ext)) throw new ValidationError('Berkas executable tidak diizinkan.');
       if (!ext || !settings.attachmentAllowedExt.includes(ext)) {
         throw new ValidationError(`Tipe berkas .${ext || '?'} tidak diizinkan.`);
@@ -1293,7 +1345,8 @@ export const supabaseAdapter: DataService = {
         .select();
       if (error) wrap(error, 'Gagal membatalkan aktivasi');
       const row = (data as SnapshotRow[] | null)?.[0];
-      if (!row) throw new ValidationError('Hanya snapshot aktif yang dapat dibatalkan aktivasinya.');
+      if (!row)
+        throw new ValidationError('Hanya snapshot aktif yang dapat dibatalkan aktivasinya.');
       const snap = toSnapshot(row);
       await auditWrite({
         action: 'DEACTIVATE',
@@ -1309,7 +1362,8 @@ export const supabaseAdapter: DataService = {
       const employeeId = await assertActor(ctx);
       if (!reason.trim()) throw new ValidationError('Alasan koreksi wajib diisi.');
       const rowErrors = validateRows(rows);
-      if (rowErrors.length > 0) throw new ValidationError(rowErrors[0] ?? 'Data koreksi tidak valid.');
+      if (rowErrors.length > 0)
+        throw new ValidationError(rowErrors[0] ?? 'Data koreksi tidak valid.');
       const source = await supabaseAdapter.distribution.get(id);
       const corrected = await supabaseAdapter.distribution.createDraft(
         {
@@ -1352,6 +1406,35 @@ export const supabaseAdapter: DataService = {
         employeeId,
       });
     },
+    async listSkRecords(opts) {
+      await requireRole();
+      let q = getSupabase()
+        .from('pip_progress_records')
+        .select('jenjang, sk_nomor, sk_tanggal, jumlah_siswa, jumlah_dana')
+        .is('deleted_at', null);
+      if (opts?.year !== undefined) q = q.eq('source_year', opts.year);
+      if (opts?.sourceId !== undefined) q = q.eq('source_id', opts.sourceId);
+      const { data, error } = await q;
+      if (error) wrap(error, 'Gagal memuat data SK Pemberian');
+      const valid = new Set<string>(['SD', 'SMP', 'SMA', 'SMK']);
+      return (
+        (data ?? []) as Array<{
+          jenjang: string;
+          sk_nomor: string | null;
+          sk_tanggal: string | null;
+          jumlah_siswa: number | null;
+          jumlah_dana: number | string | null;
+        }>
+      )
+        .filter((r) => valid.has(r.jenjang))
+        .map((r) => ({
+          jenjang: r.jenjang as PipSkRecord['jenjang'],
+          skNomor: r.sk_nomor ?? '',
+          skTanggal: r.sk_tanggal,
+          jumlahSiswa: Number(r.jumlah_siswa ?? 0),
+          jumlahDana: Number(r.jumlah_dana ?? 0),
+        }));
+    },
     async listScopes() {
       await requireRole();
       const { data, error } = await getSupabase()
@@ -1375,7 +1458,10 @@ export const supabaseAdapter: DataService = {
   integrations: {
     async listSources(opts) {
       await requireRole();
-      let q = getSupabase().from('spreadsheet_sources').select().order('year', { ascending: false });
+      let q = getSupabase()
+        .from('spreadsheet_sources')
+        .select()
+        .order('year', { ascending: false });
       if (!opts?.includeDeleted) q = q.is('deleted_at', null);
       if (!opts?.includeInactive) q = q.or('is_active.eq.true,deleted_at.not.is.null');
       const { data, error } = await q;
@@ -1426,7 +1512,11 @@ export const supabaseAdapter: DataService = {
           input.sourceType === 'pip_progress'
             ? [
                 { source_id: data.id, binding_type: 'detail_realisasi', sheet_name: 'Pemberian' },
-                { source_id: data.id, binding_type: 'allocation_summary', sheet_name: 'REKAP PROGRESS' },
+                {
+                  source_id: data.id,
+                  binding_type: 'allocation_summary',
+                  sheet_name: 'REKAP PROGRESS',
+                },
               ]
             : [{ source_id: data.id, binding_type: 'activity_rows', sheet_name: 'Sheet1' }];
         await sb.from('spreadsheet_sheet_bindings').insert(bindings);
@@ -1683,9 +1773,7 @@ export const supabaseAdapter: DataService = {
         .eq('source_type', 'activity_plan')
         .is('deleted_at', null);
       if (error) return [];
-      const years = new Set<number>(
-        ((data ?? []) as Array<{ year: number }>).map((r) => r.year),
-      );
+      const years = new Set<number>(((data ?? []) as Array<{ year: number }>).map((r) => r.year));
       return [...years].sort((a, b) => b - a);
     },
     async syncInfo(year) {
@@ -1823,15 +1911,28 @@ export const supabaseAdapter: DataService = {
       await requireAdmin();
       const sb = getSupabase();
       const tables = [
-        'employees', 'board', 'steps', 'tasks', 'task_comments', 'attachments',
-        'categories', 'labels', 'templates', 'distribution_snapshots', 'app_settings',
+        'employees',
+        'board',
+        'steps',
+        'tasks',
+        'task_comments',
+        'attachments',
+        'categories',
+        'labels',
+        'templates',
+        'distribution_snapshots',
+        'app_settings',
       ];
       const data: Record<string, unknown> = {};
       for (const table of tables) {
         const { data: rows } = await sb.from(table).select();
         data[table] = rows ?? [];
       }
-      await auditWrite({ action: 'BACKUP', entityType: 'SETTINGS', entityLabel: 'Ekspor backup JSON' });
+      await auditWrite({
+        action: 'BACKUP',
+        entityType: 'SETTINGS',
+        entityLabel: 'Ekspor backup JSON',
+      });
       return { exportedAt: nowISO(), appVersion: '1.0-supabase', data };
     },
     async importBackup() {
@@ -1935,10 +2036,18 @@ async function saveTaxonomy(
     (d) => d.name.toLowerCase() === name.toLowerCase() && d.id !== input.id,
   );
   if (exists) throw new ValidationError(`"${name}" sudah ada.`);
-  const row = { name, color: input.color, ...(input.active !== undefined ? { active: input.active } : {}) };
+  const row = {
+    name,
+    color: input.color,
+    ...(input.active !== undefined ? { active: input.active } : {}),
+  };
   const query = input.id
     ? sb.from(table).update(row).eq('id', input.id).select().single()
-    : sb.from(table).insert({ ...row, sort_order: 999 }).select().single();
+    : sb
+        .from(table)
+        .insert({ ...row, sort_order: 999 })
+        .select()
+        .single();
   const { data, error } = await query;
   if (error || !data) wrap(error, 'Gagal menyimpan');
   await auditWrite({

@@ -1,101 +1,80 @@
-import { BadgeCheck, GraduationCap, Hourglass, Target } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { BadgeCheck, GraduationCap, Target } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { ProgressBar } from '@/components/ui/progress';
 import { formatNumber, formatPercent, formatRupiahCompact } from '@/lib/format';
 import type { DistributionTotals } from '../lib';
 
-interface KpiCardProps {
-  icon: LucideIcon;
-  iconClass: string;
-  label: string;
-  value: string;
-  sub: string;
-  progress?: number; // rasio 0–1
-  progressLabel?: string;
-  children?: ReactNode;
-}
-
-function KpiCard({
-  icon: Icon,
-  iconClass,
-  label,
-  value,
-  sub,
-  progress,
-  progressLabel,
-  children,
-}: KpiCardProps) {
-  return (
-    <Card className="p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</p>
-          <p className="tnum mt-1 truncate text-2xl font-extrabold text-slate-900 2xl:text-3xl">
-            {value}
-          </p>
-          <p className="mt-0.5 truncate text-xs text-slate-500">{sub}</p>
-        </div>
-        <span
-          aria-hidden
-          className={`inline-flex size-9 shrink-0 items-center justify-center rounded-xl ${iconClass}`}
-        >
-          <Icon className="size-4.5" />
-        </span>
-      </div>
-      {progress !== undefined && (
-        <div className="mt-3">
-          <ProgressBar
-            value={progress * 100}
-            showValue
-            label={progressLabel ?? `Progres ${label}`}
-          />
-        </div>
-      )}
-      {children}
-    </Card>
-  );
-}
-
 /**
- * Empat KPI penyaluran tanpa duplikasi angka.
- *
- * Pada data produksi, realisasi (siswa/dana tersalur) selalu identik dengan
- * SK Pemberian — realisasi diturunkan dari sheet Pemberian (kolom TOTAL).
- * Karena itu "Siswa Tersalur" tidak lagi ditampilkan sebagai KPI terpisah;
- * angka yang sama tidak diulang dengan judul berbeda.
- *
- * Susunan: Alokasi · SK Pemberian · Sisa · Capaian.
+ * Tiga KPI penyaluran tanpa duplikasi angka (satu informasi tampil satu kali):
+ * - Alokasi     : kuota siswa + anggaran tahun berjalan.
+ * - SK Pemberian: realisasi siswa + dana + jumlah SK unik terbit (COUNT DISTINCT
+ *                 nomor SK dari sheet Pemberian). Pada data produksi realisasi
+ *                 tersalur identik dengan SK Pemberian, jadi tidak diulang.
+ * - Capaian     : progres siswa & dana terhadap alokasi; SISA cukup jadi
+ *                 subteks di sini (bukan kartu terpisah).
  */
-export function DistributionKpis({ totals }: { totals: DistributionTotals }) {
-  const skPct = totals.alokasiSiswa > 0 ? totals.skSiswa / totals.alokasiSiswa : 0;
+export function DistributionKpis({
+  totals,
+  skCount,
+}: {
+  totals: DistributionTotals;
+  /** Jumlah nomor SK unik; null bila detail SK belum tersedia. */
+  skCount: number | null;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard
-        icon={GraduationCap}
-        iconClass="bg-slate-100 text-slate-600"
-        label="Alokasi"
-        value={`${formatNumber(totals.alokasiSiswa)} siswa`}
-        sub={`Anggaran ${formatRupiahCompact(totals.alokasiAnggaran)}`}
-      />
-      <KpiCard
-        icon={BadgeCheck}
-        iconClass="bg-brand-50 text-brand-600"
-        label="SK Pemberian"
-        value={`${formatNumber(totals.skSiswa)} siswa`}
-        sub={`${formatRupiahCompact(totals.skAnggaran)} · ${formatPercent(skPct)} dari alokasi`}
-        progress={skPct}
-        progressLabel="SK Pemberian terhadap alokasi siswa"
-      />
-      <KpiCard
-        icon={Hourglass}
-        iconClass="bg-warning-50 text-warning-600"
-        label="Sisa"
-        value={`${formatNumber(totals.sisaSiswa)} siswa`}
-        sub={`Dana ${formatRupiahCompact(totals.sisaAnggaran)}`}
-      />
-      <Card className="p-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Card className="flex flex-col justify-center p-4 short:p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Alokasi</p>
+            <p className="tnum mt-1 text-2xl font-extrabold text-slate-900 sm:text-xl xl:text-2xl 2xl:text-3xl short:text-xl">
+              {formatNumber(totals.alokasiSiswa)} <span className="text-base font-bold">siswa</span>
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Anggaran {formatRupiahCompact(totals.alokasiAnggaran)}
+            </p>
+          </div>
+          <span
+            aria-hidden
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600"
+          >
+            <GraduationCap className="size-4.5" />
+          </span>
+        </div>
+      </Card>
+
+      <Card className="flex flex-col justify-center p-4 short:p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              SK Pemberian
+            </p>
+            <p className="tnum mt-1 text-2xl font-extrabold text-slate-900 sm:text-xl xl:text-2xl 2xl:text-3xl short:text-xl">
+              {formatNumber(totals.skSiswa)} <span className="text-base font-bold">siswa</span>
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Dana {formatRupiahCompact(totals.skAnggaran)}
+              {skCount !== null && (
+                <>
+                  {' · '}
+                  <span className="font-semibold text-slate-700">
+                    {formatNumber(skCount)} SK
+                  </span>{' '}
+                  diterbitkan
+                </>
+              )}
+            </p>
+          </div>
+          <span
+            aria-hidden
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600"
+          >
+            <BadgeCheck className="size-4.5" />
+          </span>
+        </div>
+      </Card>
+
+      <Card className="flex flex-col justify-center p-4 short:p-3">
         <div className="flex items-start justify-between gap-2">
           <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Capaian</p>
           <span
@@ -105,16 +84,22 @@ export function DistributionKpis({ totals }: { totals: DistributionTotals }) {
             <Target className="size-4.5" />
           </span>
         </div>
-        <div className="mt-2 space-y-2.5">
+        <div className="mt-1.5 space-y-2 short:mt-1 short:space-y-1.5">
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Siswa</p>
+            <p className="mb-0.5 text-xs font-medium text-slate-500">Siswa</p>
             <ProgressBar value={totals.progresSiswa * 100} showValue label="Progres siswa" />
           </div>
           <div>
-            <p className="mb-1 text-xs font-medium text-slate-500">Dana</p>
+            <p className="mb-0.5 text-xs font-medium text-slate-500">Dana</p>
             <ProgressBar value={totals.progresDana * 100} showValue label="Progres dana" />
           </div>
         </div>
+        <p className="tnum mt-1.5 text-xs text-slate-500">
+          Sisa {formatNumber(totals.sisaSiswa)} siswa · {formatRupiahCompact(totals.sisaAnggaran)}{' '}
+          <span className="text-slate-400">
+            ({formatPercent(1 - totals.progresSiswa, 0)} siswa)
+          </span>
+        </p>
       </Card>
     </div>
   );

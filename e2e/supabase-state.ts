@@ -4,6 +4,7 @@ import path from 'node:path';
 import WebSocket from 'ws';
 
 type TableName =
+  | 'steps'
   | 'tasks'
   | 'task_comments'
   | 'attachments'
@@ -24,6 +25,9 @@ interface SnapshotFile {
 const SNAPSHOT_PATH = path.resolve(process.cwd(), 'test-results', 'supabase-e2e-snapshot.json');
 
 const TABLES: TableConfig[] = [
+  // steps ikut disnapshot: board.spec menghapus/memulihkan step lewat UI —
+  // tanpa restore, kegagalan di tengah run meninggalkan step terhapus di DB.
+  { name: 'steps', pk: 'id' },
   { name: 'tasks', pk: 'id' },
   { name: 'task_comments', pk: 'id' },
   { name: 'attachments', pk: 'id' },
@@ -39,9 +43,11 @@ const DELETE_ORDER: TableName[] = [
   'audit_log',
   'device_sessions',
   'tasks',
+  'steps',
 ];
 
 const RESTORE_ORDER: TableName[] = [
+  'steps',
   'tasks',
   'task_comments',
   'attachments',
@@ -73,7 +79,9 @@ function env(name: string, dotEnv = readDotEnv()): string {
 
 function shouldSnapshot(dotEnv = readDotEnv()): boolean {
   if (process.env.E2E_SUPABASE_SNAPSHOT === '0') return false;
-  const mode = (env('VITE_DATA_MODE', dotEnv) || env('NEXT_PUBLIC_DATA_MODE', dotEnv)).toLowerCase();
+  const mode = (
+    env('VITE_DATA_MODE', dotEnv) || env('NEXT_PUBLIC_DATA_MODE', dotEnv)
+  ).toLowerCase();
   const hasSupabaseUrl = Boolean(
     env('VITE_SUPABASE_URL', dotEnv) || env('NEXT_PUBLIC_SUPABASE_URL', dotEnv),
   );
@@ -118,7 +126,10 @@ async function readAllRows(
 export async function snapshotSupabase(): Promise<void> {
   if (!shouldSnapshot()) return;
   const client = serviceClient();
-  const snapshot: SnapshotFile = { takenAt: new Date().toISOString(), tables: {} as SnapshotFile['tables'] };
+  const snapshot: SnapshotFile = {
+    takenAt: new Date().toISOString(),
+    tables: {} as SnapshotFile['tables'],
+  };
   for (const table of TABLES) {
     snapshot.tables[table.name] = await readAllRows(client, table);
   }

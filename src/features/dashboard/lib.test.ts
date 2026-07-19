@@ -5,6 +5,7 @@ import {
   attentionScore,
   isFocusToday,
   needsFollowUpIds,
+  skStats,
   totalsFromRows,
   trendSeries,
   workStats,
@@ -280,5 +281,99 @@ describe('workStats', () => {
   it('tanpa tenggat mendatang → nearestDue null', () => {
     const s = workStats([makeTask({ dueDate: '2026-07-01' })], steps, TODAY);
     expect(s.nearestDue).toBeNull();
+  });
+});
+
+describe('skStats', () => {
+  const rec = (
+    jenjang: 'SD' | 'SMP' | 'SMA' | 'SMK',
+    skNomor: string,
+    skTanggal: string | null,
+  ) => ({ jenjang, skNomor, skTanggal });
+
+  it('nomor SK sama pada banyak baris dihitung SATU SK (bukan jumlah baris)', () => {
+    const s = skStats(
+      [
+        rec('SD', '1/PLPP.1.1/BP/SK.1/2026', '2026-03-30'),
+        rec('SD', '1/PLPP.1.1/BP/SK.1/2026', '2026-03-30'),
+        rec('SD', ' 1/plpp.1.1/bp/sk.1/2026 ', '2026-03-30'), // trim + case-insensitive
+        rec('SMP', '6/PLPP.1.2/BP/SK.1/2026', '2026-03-30'),
+      ],
+      2026,
+    );
+    expect(s.totalSk).toBe(2);
+    expect(s.perJenjang).toEqual({ SD: 1, SMP: 1 });
+    expect(s.perMonth[2]).toEqual({ month: 3, perJenjang: { SD: 1, SMP: 1 }, total: 2 });
+  });
+
+  it('nomor SK kosong dilewati tanpa membuat ID buatan', () => {
+    const s = skStats(
+      [
+        rec('SD', '', '2026-04-01'),
+        rec('SD', '   ', '2026-04-01'),
+        rec('SD', 'SK-A', '2026-04-01'),
+      ],
+      2026,
+    );
+    expect(s.totalSk).toBe(1);
+    expect(s.unnumberedRows).toBe(2);
+    expect(s.perMonth[3]!.total).toBe(1);
+  });
+
+  it('tanggal invalid/kosong/di luar tahun → di luar agregasi bulanan, tetap dihitung sebagai SK', () => {
+    const s = skStats(
+      [
+        rec('SMA', 'SK-1', null),
+        rec('SMA', 'SK-2', '30/03/2026'), // format bukan ISO
+        rec('SMA', 'SK-3', '2026-02-30'), // kalender tidak valid
+        rec('SMA', 'SK-4', '2025-11-10'), // tahun lain
+        rec('SMA', 'SK-5', '2026-06-05'),
+      ],
+      2026,
+    );
+    expect(s.totalSk).toBe(5);
+    expect(s.perJenjang).toEqual({ SMA: 5 });
+    expect(s.undatedSk).toBe(4);
+    expect(s.perMonth.reduce((a, m) => a + m.total, 0)).toBe(1);
+    expect(s.perMonth[5]!.total).toBe(1);
+  });
+
+  it('satu SK lintas jenjang: dihitung pada tiap jenjang; total global tetap satu', () => {
+    const s = skStats(
+      [rec('SD', 'SK-GAB', '2026-05-02'), rec('SMP', 'SK-GAB', '2026-05-02')],
+      2026,
+    );
+    expect(s.totalSk).toBe(1);
+    expect(s.perJenjang).toEqual({ SD: 1, SMP: 1 });
+    expect(s.perMonth[4]).toEqual({ month: 5, perJenjang: { SD: 1, SMP: 1 }, total: 1 });
+  });
+
+  it('satu nomor dengan beberapa tanggal → perlu validasi; bulan dari tanggal paling awal', () => {
+    const s = skStats([rec('SMK', 'SK-X', '2026-06-20'), rec('SMK', 'SK-X', '2026-04-08')], 2026);
+    expect(s.totalSk).toBe(1);
+    expect(s.multiDateNomor).toEqual(['SK-X']);
+    expect(s.perMonth[3]!.total).toBe(1); // April (paling awal)
+    expect(s.perMonth[5]!.total).toBe(0);
+  });
+
+  it('filter jenjang membatasi baris yang diagregasi', () => {
+    const data = [
+      rec('SD', 'SK-SD-1', '2026-03-01'),
+      rec('SMP', 'SK-SMP-1', '2026-03-01'),
+      rec('SMP', 'SK-SMP-2', '2026-04-01'),
+    ];
+    const all = skStats(data, 2026);
+    expect(all.totalSk).toBe(3);
+    const smp = skStats(data, 2026, 'SMP');
+    expect(smp.totalSk).toBe(2);
+    expect(smp.perJenjang).toEqual({ SMP: 2 });
+    expect(smp.perMonth[2]!.total).toBe(1);
+    expect(smp.perMonth[3]!.total).toBe(1);
+  });
+
+  it('selalu mengembalikan 12 bulan (Jan–Des)', () => {
+    const s = skStats([], 2026);
+    expect(s.perMonth).toHaveLength(12);
+    expect(s.perMonth.map((m) => m.month)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
   });
 });

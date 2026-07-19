@@ -53,9 +53,19 @@ for (const vp of VIEWPORTS) {
     // Elemen kunci tetap dapat diakses
     await page.goto('/dashboard');
     await expect(page.getByText('Penyaluran PIP').first()).toBeVisible();
+    // Dashboard TV/desktop (≥ lg): satu layar penuh tanpa scroll vertikal.
+    if (vp.width >= 1366) {
+      await page.waitForLoadState('networkidle');
+      const vertical = await page.evaluate(() => ({
+        scrollHeight: document.documentElement.scrollHeight,
+        clientHeight: document.documentElement.clientHeight,
+      }));
+      expect(
+        vertical.scrollHeight,
+        `${vp.name} /dashboard: butuh scroll vertikal (${vertical.scrollHeight} > ${vertical.clientHeight})`,
+      ).toBeLessThanOrEqual(vertical.clientHeight + 1);
+    }
     await page.goto('/pekerjaan');
-    await expect(
-      page.getByRole('region', { name: 'Step To Do', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Step To Do', exact: true })).toBeVisible();
   });
 }

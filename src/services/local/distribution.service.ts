@@ -1,7 +1,7 @@
 import { uid } from '@/lib/utils';
 import { NotFoundError, ValidationError } from '@/services/errors';
 import { validateRows, validateScope } from '@/services/distribution-validation';
-import type { DistributionService, DistributionSnapshot } from '@/services/types';
+import type { DistributionService, DistributionSnapshot, PipSkRecord } from '@/services/types';
 import { localBus } from './bus';
 import { COL, db, ensureSeeded, nowISO, writeAudit } from './db';
 import { requireActor, requireAdmin, requireSession } from './guard-util';
@@ -47,7 +47,10 @@ export const localDistribution: DistributionService = {
           (year === undefined || s.year === year) &&
           (period === undefined || s.period === period),
       )
-      .sort((a, b) => Date.parse(b.activatedAt ?? b.createdAt) - Date.parse(a.activatedAt ?? a.createdAt));
+      .sort(
+        (a, b) =>
+          Date.parse(b.activatedAt ?? b.createdAt) - Date.parse(a.activatedAt ?? a.createdAt),
+      );
     return candidates[0] ?? null;
   },
 
@@ -114,7 +117,13 @@ export const localDistribution: DistributionService = {
     }
     const next = db.snapshots().map((s): DistributionSnapshot => {
       if (s.id === id) {
-        return { ...s, status: 'ACTIVE', activatedAt: nowISO(), updatedAt: nowISO(), version: s.version + 1 };
+        return {
+          ...s,
+          status: 'ACTIVE',
+          activatedAt: nowISO(),
+          updatedAt: nowISO(),
+          version: s.version + 1,
+        };
       }
       // Hanya satu snapshot aktif untuk scope (tahun, periode) yang sama.
       if (s.status === 'ACTIVE' && s.year === snap.year && s.period === snap.period) {
@@ -144,11 +153,19 @@ export const localDistribution: DistributionService = {
       throw new ValidationError('Hanya snapshot aktif yang dapat dibatalkan aktivasinya.');
     }
     save(
-      db.snapshots().map((s) =>
-        s.id === id
-          ? { ...s, status: 'DRAFT', activatedAt: null, updatedAt: nowISO(), version: s.version + 1 }
-          : s,
-      ),
+      db
+        .snapshots()
+        .map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                status: 'DRAFT',
+                activatedAt: null,
+                updatedAt: nowISO(),
+                version: s.version + 1,
+              }
+            : s,
+        ),
     );
     writeAudit({
       ...auditBase(employeeId),
@@ -219,6 +236,46 @@ export const localDistribution: DistributionService = {
       entityId: id,
       entityLabel: snapshotLabel(snap),
     });
+  },
+
+  async listSkRecords(opts): Promise<PipSkRecord[]> {
+    await ensureSeeded();
+    requireSession();
+    // Mode lokal tidak menyimpan baris SK hasil sinkronisasi. Untuk demo,
+    // agregat snapshot aktif dipecah DETERMINISTIK menjadi beberapa SK per
+    // jenjang (tahap tetap, tanggal tetap) supaya panel SK Dashboard hidup.
+    const snap = await localDistribution.getActive(opts?.year);
+    if (!snap) return [];
+    // Bobot tahap tetap; jumlah baris terakhir menampung sisa pembulatan agar
+    // total siswa/dana per jenjang identik dengan agregat snapshot.
+    const stages = [
+      { w: 0.35, month: 3, day: 30 },
+      { w: 0.25, month: 4, day: 23 },
+      { w: 0.25, month: 5, day: 18 },
+      { w: 0.15, month: 6, day: 12 },
+    ];
+    const records: PipSkRecord[] = [];
+    for (const row of snap.rows) {
+      if (row.skSiswa <= 0) continue;
+      let siswaLeft = row.skSiswa;
+      let danaLeft = row.skAnggaran;
+      stages.forEach((stage, i) => {
+        const last = i === stages.length - 1;
+        const siswa = last ? siswaLeft : Math.round(row.skSiswa * stage.w);
+        const dana = last ? danaLeft : Math.round(row.skAnggaran * stage.w);
+        siswaLeft -= siswa;
+        danaLeft -= dana;
+        if (siswa <= 0 && dana <= 0) return;
+        records.push({
+          jenjang: row.jenjang,
+          skNomor: `${i + 1}/PLPP/${row.jenjang}/SK.${i + 1}/${snap.year}`,
+          skTanggal: `${snap.year}-${String(stage.month).padStart(2, '0')}-${String(stage.day).padStart(2, '0')}`,
+          jumlahSiswa: Math.max(siswa, 0),
+          jumlahDana: Math.max(dana, 0),
+        });
+      });
+    }
+    return records;
   },
 
   async listScopes(): Promise<{ year: number; period: string }[]> {

@@ -2,75 +2,68 @@ import { expect, test } from '@playwright/test';
 import { collectConsoleErrors, loginAsUser } from './helpers';
 
 test.describe('dashboard', () => {
-  test('data penyaluran agregat, rekap jenjang, dan grafik tampil', async ({ page }) => {
+  test('KPI penyaluran, penerbitan SK, progres jenjang, dan rekap tampil', async ({ page }) => {
     const errors = collectConsoleErrors(page);
     await loginAsUser(page);
 
     await expect(page.getByRole('heading', { name: 'Penyaluran PIP' })).toBeVisible();
-    // KPI (default: seluruh jenjang, 2026 Termin 1 aktif) — tanpa KPI duplikat
-    await expect(page.getByText('18.000.000 siswa')).toBeVisible();
-    await expect(page.getByText('Capaian').first()).toBeVisible();
-    // Grafik
-    await expect(page.getByText('Target vs Realisasi per Jenjang')).toBeVisible();
+    // Periode seed dipilih eksplisit — periode aktif default bisa berasal dari
+    // sinkronisasi Google Sheets produksi (angka berubah setiap hari).
+    await page.getByLabel('Periode').selectOption('Termin 1');
+    // KPI ringkas (seluruh jenjang) — tanpa duplikasi
+    await expect(page.getByText('18.000.000').first()).toBeVisible();
+    await expect(page.getByText('Alokasi', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('SK Pemberian', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('Capaian', { exact: true }).first()).toBeVisible();
+    // Chart & panel unik
+    await expect(page.getByText('Penerbitan SK per Bulan')).toBeVisible();
     await expect(page.getByText('Progres per Jenjang')).toBeVisible();
-    // Rekap jenjang
+    // Rekap jenjang + kolom jumlah SK unik
     await expect(page.getByText('Rekap per Jenjang')).toBeVisible();
     const table = page.locator('table');
+    await expect(table.getByText('Jumlah SK')).toBeVisible();
     for (const j of ['SD', 'SMP', 'SMA', 'SMK']) {
       await expect(table.getByRole('cell', { name: j, exact: true })).toBeVisible();
     }
-    // Waktu pembaruan
+    // Status pembaruan data
     await expect(page.getByText(/Terakhir diperbarui/)).toBeVisible();
     expect(errors).toEqual([]);
   });
 
   test('filter jenjang & periode bekerja', async ({ page }) => {
     await loginAsUser(page);
-    // Filter jenjang SD → KPI alokasi berubah
+    // Periode seed (deterministik) + filter jenjang SD → KPI alokasi berubah
+    await page.getByLabel('Periode').selectOption('Termin 1');
     await page.getByLabel('Jenjang', { exact: true }).selectOption('SD');
-    await expect(page.getByText('10.400.000 siswa')).toBeVisible();
+    await expect(page.getByText('10.400.000').first()).toBeVisible();
     // Periode tanpa snapshot aktif → empty state
     await page.getByLabel('Periode').selectOption('Termin 2');
     await expect(page.getByText('Belum ada data penyaluran')).toBeVisible();
-    // Kembali ke periode aktif
-    await page.getByLabel('Periode').selectOption('');
-    await expect(page.getByText('10.400.000 siswa')).toBeVisible();
+    // Kembali ke periode seed
+    await page.getByLabel('Periode').selectOption('Termin 1');
+    await expect(page.getByText('10.400.000').first()).toBeVisible();
   });
 
-  test('kartu statistik pekerjaan mengikuti step dan membuka board dengan filter', async ({
-    page,
-  }) => {
+  test('Dashboard tidak lagi menampilkan seksi pekerjaan tim', async ({ page }) => {
     await loginAsUser(page);
-    const stepCards = page.getByRole('button', { name: /Buka board dengan filter step/ });
-    await expect(stepCards).toHaveCount(5); // step default seed
-    await expect(
-      page.getByRole('button', { name: 'Buka board dengan filter step On Progress' }),
-    ).toBeVisible();
-    // Kartu ringkasan eksekutif lain
-    await expect(page.getByRole('button', { name: 'Buka menu Pekerjaan' })).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: 'Buka ringkasan pekerjaan yang perlu perhatian' }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Buka board dengan filter step To Do' }).click();
-    await expect(page).toHaveURL(/\/pekerjaan\?step=/);
+    await expect(page.getByRole('heading', { name: 'Penyaluran PIP' })).toBeVisible();
+    // Seluruh elemen "Pekerjaan Tim" pindah ke Pekerjaan › Ringkasan
+    await expect(page.getByText('Pekerjaan Tim')).toHaveCount(0);
+    await expect(page.getByText('Total Pekerjaan Aktif')).toHaveCount(0);
+    await expect(page.getByText('Lihat ringkasan lengkap')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Buka board dengan filter step/ })).toHaveCount(
+      0,
+    );
   });
 
-  test('kartu Perlu Perhatian membuka Pekerjaan › Ringkasan dengan rincian lengkap', async ({
-    page,
-  }) => {
+  test('Pekerjaan › Ringkasan tetap menyajikan ringkasan pekerjaan lengkap', async ({ page }) => {
     await loginAsUser(page);
-    // Detail (Perlu Perhatian, Fokus, Aktivitas) kini berada di menu Pekerjaan.
-    await page
-      .getByRole('button', { name: 'Buka ringkasan pekerjaan yang perlu perhatian' })
-      .click();
-    await expect(page).toHaveURL(/\/pekerjaan\?view=ringkasan/);
+    await page.goto('/pekerjaan?view=ringkasan');
     await expect(page.getByText('Perlu Perhatian')).toBeVisible();
     // Seed: rekonsiliasi Juni melewati tenggat & terhambat
     await expect(page.getByText('Melewati tenggat').first()).toBeVisible();
     await expect(page.getByText('Fokus Hari Ini')).toBeVisible();
-    await expect(page.getByText('Ditandai fokus').first()).toBeVisible();
     await expect(page.getByText('Aktivitas Terbaru')).toBeVisible();
-    // Feed aktivitas terisi (bukan empty state).
     await expect(
       page
         .getByText(/memperbarui data penyaluran|membuat|memindahkan|memperbarui|menyelesaikan/)

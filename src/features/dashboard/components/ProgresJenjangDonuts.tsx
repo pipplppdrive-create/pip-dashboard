@@ -1,5 +1,5 @@
 import type { DistributionRow } from '@/services/types';
-import { formatNumber, formatPercent } from '@/lib/format';
+import { formatNumber, formatCompactNumber, formatPercent } from '@/lib/format';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { PieChart } from 'lucide-react';
 import { ORDINAL_RAMP } from '../chart-tokens';
@@ -12,10 +12,10 @@ const RADIUS = 42;
 const CIRC = 2 * Math.PI * RADIUS;
 
 /**
- * Donut progres per jenjang (realisasi/SK Pemberian terhadap alokasi).
- * Setiap donut menampilkan — tanpa hover — nama jenjang, persentase, realisasi,
- * alokasi, dan sisa. Ring SVG murni (ringan, terbaca dari jarak jauh untuk TV).
- * Realisasi = SK Pemberian (identik pada data produksi).
+ * Progres per jenjang — ring kompak (satu hue magnitude, bukan warna
+ * kategorikal): persentase, realisasi, dan alokasi per jenjang. Sisa tidak
+ * diulang di sini (sudah tersirat dari progres; angka eksak ada di tabel
+ * Rekap per Jenjang). Ring SVG murni — ringan & terbaca dari jarak TV.
  */
 export function ProgresJenjangDonuts({ rows }: ProgresJenjangDonutsProps) {
   const withData = rows.filter((r) => r.alokasiSiswa > 0 || r.salurSiswa > 0);
@@ -31,24 +31,25 @@ export function ProgresJenjangDonuts({ rows }: ProgresJenjangDonutsProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div
+      className={`grid content-stretch gap-2.5 lg:h-full lg:min-h-0 short:gap-2 ${withData.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}
+    >
       {withData.map((r) => {
         const pct = r.alokasiSiswa > 0 ? Math.min(r.salurSiswa / r.alokasiSiswa, 1) : 0;
-        const sisa = Math.max(r.alokasiSiswa - r.salurSiswa, 0);
         const dash = pct * CIRC;
         return (
           <div
             key={r.jenjang}
-            className="flex items-center gap-4 rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-sm"
+            className="flex min-h-0 items-center gap-3 rounded-xl border border-slate-200/80 bg-white p-2.5 short:p-1.5"
           >
             <div
-              className="relative shrink-0"
+              className="relative aspect-square h-14 shrink-0 lg:h-full lg:max-h-14 lg:min-h-9 2xl:max-h-18 short:max-h-10"
               role="img"
-              aria-label={`${r.jenjang}: ${formatPercent(pct)} — ${formatNumber(
+              aria-label={`${r.jenjang}: ${formatPercent(pct)} — realisasi ${formatNumber(
                 r.salurSiswa,
-              )} dari ${formatNumber(r.alokasiSiswa)} siswa`}
+              )} dari alokasi ${formatNumber(r.alokasiSiswa)} siswa`}
             >
-              <svg viewBox="0 0 100 100" className="size-20 -rotate-90 2xl:size-24">
+              <svg viewBox="0 0 100 100" className="size-full -rotate-90">
                 <circle cx="50" cy="50" r={RADIUS} fill="none" stroke="#e2e8f0" strokeWidth="12" />
                 <circle
                   cx="50"
@@ -61,30 +62,19 @@ export function ProgresJenjangDonuts({ rows }: ProgresJenjangDonutsProps) {
                   strokeDasharray={`${dash} ${CIRC - dash}`}
                 />
               </svg>
-              <span className="tnum absolute inset-0 flex items-center justify-center text-base font-extrabold text-slate-900 2xl:text-lg">
+              <span className="tnum absolute inset-0 flex items-center justify-center text-xs font-extrabold text-slate-900 2xl:text-sm short:text-[10px]">
                 {formatPercent(pct, 0)}
               </span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-slate-800">{r.jenjang}</p>
-              <dl className="mt-1 space-y-0.5 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <dt className="text-slate-500">Realisasi</dt>
-                  <dd className="tnum font-semibold text-slate-900">
-                    {formatNumber(r.salurSiswa)}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <dt className="text-slate-500">Alokasi</dt>
-                  <dd className="tnum font-medium text-slate-700">
-                    {formatNumber(r.alokasiSiswa)}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <dt className="text-slate-500">Sisa</dt>
-                  <dd className="tnum font-medium text-slate-700">{formatNumber(sisa)}</dd>
-                </div>
-              </dl>
+              <p className="truncate text-sm font-bold text-slate-800">{r.jenjang}</p>
+              <p className="tnum mt-0.5 truncate text-xs text-slate-600 short:mt-0">
+                <span className="font-semibold text-slate-900">
+                  {formatCompactNumber(r.salurSiswa)}
+                </span>{' '}
+                <span className="text-slate-400">/</span> {formatCompactNumber(r.alokasiSiswa)}{' '}
+                siswa
+              </p>
             </div>
           </div>
         );

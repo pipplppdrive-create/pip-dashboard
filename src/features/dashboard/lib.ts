@@ -4,6 +4,7 @@ import type {
   DistributionRow,
   DistributionSnapshot,
   Jenjang,
+  PipSkRecord,
   Step,
   StepKind,
   Task,
@@ -76,6 +77,130 @@ export function trendSeries(
       return { date: s.activatedAt!, salurSiswa: t.salurSiswa, salurAnggaran: t.salurAnggaran };
     })
     .slice(-maxPoints);
+}
+
+// ---------------------------------------------------------------------------
+// Agregasi SK unik (sheet Pemberian — nomor & tanggal SK)
+// ---------------------------------------------------------------------------
+
+/** Jumlah SK unik per bulan (1–12) dalam satu tahun anggaran. */
+export interface SkMonthCount {
+  /** Bulan 1–12. */
+  month: number;
+  /** SK unik per jenjang yang terbit pada bulan tsb. */
+  perJenjang: Partial<Record<Jenjang, number>>;
+  /** SK unik (global, lintas jenjang) yang terbit pada bulan tsb. */
+  total: number;
+}
+
+export interface SkStats {
+  /** Jumlah nomor SK unik global (nomor sama di banyak baris = satu SK). */
+  totalSk: number;
+  /** SK unik per jenjang; SK multi-jenjang dihitung pada tiap jenjang tercatat. */
+  perJenjang: Partial<Record<Jenjang, number>>;
+  /** Selalu 12 entri (Jan–Des). SK tanpa tanggal valid tidak masuk agregasi bulanan. */
+  perMonth: SkMonthCount[];
+  /** Baris dengan nomor SK kosong — TIDAK dihitung (tanpa ID buatan). */
+  unnumberedRows: number;
+  /** SK tanpa tanggal valid pada tahun terpilih — di luar agregasi bulanan. */
+  undatedSk: number;
+  /**
+   * Nomor SK dengan lebih dari satu tanggal berbeda (data perlu validasi).
+   * Aturan deterministik: bulan diambil dari tanggal valid PALING AWAL.
+   */
+  multiDateNomor: string[];
+}
+
+/** Normalisasi nomor SK untuk pencocokan: trim + case-insensitive. */
+export function normalizeSkNomor(nomor: string): string {
+  return nomor.trim().toUpperCase();
+}
+
+/** Tanggal ISO valid (yyyy-MM-dd, kalender benar) → dipakai; selain itu null. */
+function validIsoDate(value: string | null): string | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+  if (!m) return null;
+  const [, y, mo, d] = m;
+  const month = Number(mo);
+  const day = Number(d);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(Number(y), month - 1, day));
+  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${y}-${mo}-${d}`;
+}
+
+/**
+ * Statistik SK unik dari baris sheet Pemberian.
+ * - Nomor dinormalisasi (trim, case-insensitive); nomor kosong dilewati.
+ * - Satu nomor pada banyak baris = SATU SK (bukan jumlah baris).
+ * - Agregasi bulanan memakai tanggal SK; `year` membatasi tahun anggaran —
+ *   tanggal di luar tahun tsb diperlakukan tidak valid untuk agregasi bulanan.
+ */
+export function skStats(
+  records: readonly Pick<PipSkRecord, 'jenjang' | 'skNomor' | 'skTanggal'>[],
+  year?: number,
+  jenjang: JenjangFilter = 'ALL',
+): SkStats {
+  const filtered = jenjang === 'ALL' ? records : records.filter((r) => r.jenjang === jenjang);
+
+  interface Group {
+    jenjangs: Set<Jenjang>;
+    dates: Set<string>;
+  }
+  const groups = new Map<string, Group>();
+  let unnumberedRows = 0;
+
+  for (const r of filtered) {
+    const key = normalizeSkNomor(r.skNomor);
+    if (!key) {
+      unnumberedRows += 1;
+      continue;
+    }
+    const group = groups.get(key) ?? { jenjangs: new Set<Jenjang>(), dates: new Set<string>() };
+    group.jenjangs.add(r.jenjang);
+    const date = validIsoDate(r.skTanggal);
+    if (date && (year === undefined || Number(date.slice(0, 4)) === year)) {
+      group.dates.add(date);
+    }
+    groups.set(key, group);
+  }
+
+  const perJenjang: Partial<Record<Jenjang, number>> = {};
+  const perMonth: SkMonthCount[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    perJenjang: {},
+    total: 0,
+  }));
+  const multiDateNomor: string[] = [];
+  let undatedSk = 0;
+
+  for (const [nomor, group] of groups) {
+    for (const j of group.jenjangs) {
+      perJenjang[j] = (perJenjang[j] ?? 0) + 1;
+    }
+    if (group.dates.size === 0) {
+      undatedSk += 1;
+      continue;
+    }
+    if (group.dates.size > 1) multiDateNomor.push(nomor);
+    // Deterministik: tanggal valid paling awal menentukan bulan penerbitan.
+    const earliest = [...group.dates].sort()[0]!;
+    const bucket = perMonth[Number(earliest.slice(5, 7)) - 1]!;
+    bucket.total += 1;
+    for (const j of group.jenjangs) {
+      bucket.perJenjang[j] = (bucket.perJenjang[j] ?? 0) + 1;
+    }
+  }
+
+  return {
+    totalSk: groups.size,
+    perJenjang,
+    perMonth,
+    unnumberedRows,
+    undatedSk,
+    multiDateNomor: multiDateNomor.sort(),
+  };
 }
 
 // ---------------------------------------------------------------------------

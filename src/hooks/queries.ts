@@ -21,6 +21,8 @@ export const qk = {
     ['distribution', 'active', year ?? null, period ?? null] as const,
   distributionList: () => ['distribution', 'list'] as const,
   distributionScopes: () => ['distribution', 'scopes'] as const,
+  distributionSk: (year?: number, sourceId?: string) =>
+    ['distribution', 'sk', year ?? null, sourceId ?? null] as const,
   activity: (limit = 20) => ['audit', 'activity', limit] as const,
   auditList: (filter: unknown) => ['audit', 'list', filter] as const,
   settings: () => ['settings'] as const,
@@ -49,7 +51,8 @@ export function useEmployees(includeInactive = false) {
  * lokal). Kunci = avatarPath. Pegawai tanpa foto tidak ikut diminta.
  */
 export function useEmployeePhotos(
-  employees: ReadonlyArray<{ avatarPath: string | null; avatarUpdatedAt?: string | null }> | undefined,
+  employees:
+    ReadonlyArray<{ avatarPath: string | null; avatarUpdatedAt?: string | null }> | undefined,
 ) {
   const paths = (employees ?? [])
     .map((e) => e.avatarPath)
@@ -134,6 +137,14 @@ export function useSnapshots() {
   return useQuery({
     queryKey: qk.distributionList(),
     queryFn: () => getDataService().distribution.list(),
+  });
+}
+
+/** Baris SK Pemberian (agregasi SK unik Dashboard). */
+export function usePipSkRecords(year?: number, sourceId?: string) {
+  return useQuery({
+    queryKey: qk.distributionSk(year, sourceId),
+    queryFn: () => getDataService().distribution.listSkRecords({ year, sourceId }),
   });
 }
 

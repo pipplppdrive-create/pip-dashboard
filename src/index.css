@@ -1,6 +1,13 @@
 @import '@fontsource-variable/plus-jakarta-sans';
 @import 'tailwindcss';
 
+/*
+ * Varian "short": viewport lebar (≥ lg) tetapi pendek (≤ 900px), mis. laptop
+ * 1366×768 dan desktop 1440×900. Dipakai Dashboard untuk memadatkan kartu/tabel agar tetap satu
+ * layar tanpa scroll vertikal.
+ */
+@custom-variant short (@media (min-width: 64rem) and (max-height: 56.25rem));
+
 /* ============================================================
    Design tokens — Dashboard PIP Puslapdik
    ============================================================ */
@@ -199,8 +206,14 @@ body {
    ============================================================ */
 
 @keyframes mascot-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.08); }
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.08);
+  }
 }
 .mascot-blink {
   animation: mascot-blink 4.2s ease-in-out infinite;
@@ -213,12 +226,22 @@ body {
   transform-box: fill-box;
   transform-origin: 50% 90%;
 }
-.mascot-delay-1 { transition-delay: 30ms; }
-.mascot-delay-2 { transition-delay: 60ms; }
+.mascot-delay-1 {
+  transition-delay: 30ms;
+}
+.mascot-delay-2 {
+  transition-delay: 60ms;
+}
 
-.mascot-lean { transform: rotate(3deg) translateY(1px); }
-.mascot-lean-left { transform: rotate(-3deg) translateY(1px); }
-.mascot-turn { transform: translateX(-3px) rotate(-2deg); }
+.mascot-lean {
+  transform: rotate(3deg) translateY(1px);
+}
+.mascot-lean-left {
+  transform: rotate(-3deg) translateY(1px);
+}
+.mascot-turn {
+  transform: translateX(-3px) rotate(-2deg);
+}
 
 /* Pupil mengikuti kursor — nilai px diset LoginPage lewat --gaze-x/--gaze-y */
 .mascot-pupils {
@@ -231,7 +254,9 @@ body {
 .mascot-hands {
   opacity: 0;
   transform: translateY(26px);
-  transition: transform 190ms ease, opacity 150ms ease;
+  transition:
+    transform 190ms ease,
+    opacity 150ms ease;
   transform-box: fill-box;
 }
 /* Bersiap: tangan naik setengah (password fokus, belum diketik) */
@@ -245,22 +270,43 @@ body {
 }
 
 @keyframes mascot-hop {
-  0% { transform: translateY(0); }
-  40% { transform: translateY(-5px); }
-  100% { transform: translateY(0); }
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-5px);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
-.mascot-hop { animation: mascot-hop 380ms ease-out 1; }
+.mascot-hop {
+  animation: mascot-hop 380ms ease-out 1;
+}
 
 @keyframes mascot-shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-3px); }
-  60% { transform: translateX(3px); }
-  80% { transform: translateX(-1.5px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-3px);
+  }
+  60% {
+    transform: translateX(3px);
+  }
+  80% {
+    transform: translateX(-1.5px);
+  }
 }
-.mascot-shake { animation: mascot-shake 260ms ease-in-out 1; }
+.mascot-shake {
+  animation: mascot-shake 260ms ease-in-out 1;
+}
 
 .mascot-sparkles {
   opacity: 0;
   transition: opacity 200ms ease;
 }
-.mascot-sparkles-on { opacity: 1; }
+.mascot-sparkles-on {
+  opacity: 1;
+}

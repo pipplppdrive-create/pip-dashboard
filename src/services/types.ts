@@ -215,6 +215,20 @@ export interface DistributionRow {
   salurAnggaran: number;
 }
 
+/**
+ * Satu baris SK dari sheet Pemberian hasil sinkronisasi (agregat per SK —
+ * tanpa data individual siswa). Sumber: tabel pip_progress_records.
+ */
+export interface PipSkRecord {
+  jenjang: Jenjang;
+  /** Nomor SK apa adanya dari spreadsheet (bisa kosong). */
+  skNomor: string;
+  /** Tanggal SK ISO (yyyy-MM-dd); null bila kosong/tidak valid. */
+  skTanggal: string | null;
+  jumlahSiswa: number;
+  jumlahDana: number;
+}
+
 export interface DistributionSnapshot {
   id: string;
   year: number;
@@ -414,12 +428,7 @@ export interface GoogleConnectionStatus {
 // ---------------------------------------------------------------------------
 
 export type ActivityStatus =
-  | 'RENCANA'
-  | 'TERJADWAL'
-  | 'BERLANGSUNG'
-  | 'SELESAI'
-  | 'DITUNDA'
-  | 'DIBATALKAN';
+  'RENCANA' | 'TERJADWAL' | 'BERLANGSUNG' | 'SELESAI' | 'DITUNDA' | 'DIBATALKAN';
 
 export const ACTIVITY_STATUS_LIST: readonly ActivityStatus[] = [
   'RENCANA',
@@ -646,7 +655,10 @@ export interface BoardService {
   get(): Promise<BoardInfo>;
   rename(title: string, expectedVersion: number, ctx: ActorContext): Promise<BoardInfo>;
   listSteps(opts?: { includeDeleted?: boolean }): Promise<Step[]>;
-  createStep(input: { name: string; kind?: StepKind; color?: string }, ctx: ActorContext): Promise<Step>;
+  createStep(
+    input: { name: string; kind?: StepKind; color?: string },
+    ctx: ActorContext,
+  ): Promise<Step>;
   updateStep(
     id: string,
     patch: Partial<Pick<Step, 'name' | 'kind' | 'color'>>,
@@ -668,11 +680,7 @@ export interface TaskService {
   get(id: string): Promise<Task>;
   create(input: TaskCreateInput, ctx: ActorContext): Promise<Task>;
   update(id: string, patch: TaskPatch, expectedVersion: number, ctx: ActorContext): Promise<Task>;
-  move(
-    id: string,
-    to: { stepId: string; index: number },
-    ctx: ActorContext,
-  ): Promise<Task>;
+  move(id: string, to: { stepId: string; index: number }, ctx: ActorContext): Promise<Task>;
   archive(id: string, ctx: ActorContext): Promise<Task>;
   unarchive(id: string, ctx: ActorContext): Promise<Task>;
   softDelete(id: string, reason: string, ctx: ActorContext): Promise<void>;
@@ -682,7 +690,12 @@ export interface TaskService {
   listComments(taskId: string): Promise<TaskComment[]>;
   /** Seluruh komentar (untuk analisis "memerlukan tindak lanjut" di Dashboard). */
   listAllComments(): Promise<TaskComment[]>;
-  addComment(taskId: string, type: CommentType, text: string, ctx: ActorContext): Promise<TaskComment>;
+  addComment(
+    taskId: string,
+    type: CommentType,
+    text: string,
+    ctx: ActorContext,
+  ): Promise<TaskComment>;
   history(taskId: string): Promise<AuditEntry[]>;
 }
 
@@ -741,6 +754,11 @@ export interface DistributionService {
   remove(id: string, ctx: ActorContext): Promise<void>;
   /** Daftar (tahun, periode) yang tersedia untuk filter Dashboard. */
   listScopes(): Promise<{ year: number; period: string }[]>;
+  /**
+   * Baris SK Pemberian hasil sinkronisasi — bahan agregasi SK unik Dashboard
+   * (jumlah SK per jenjang & per bulan). Kosong bila belum ada sinkronisasi.
+   */
+  listSkRecords(opts?: { year?: number; sourceId?: string }): Promise<PipSkRecord[]>;
 }
 
 export interface AuditReadService {
