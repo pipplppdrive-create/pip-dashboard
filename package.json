@@ -20,6 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "typecheck:server": "tsc --noEmit -p server/tsconfig.json",
+    "start:render": "tsx server/render-server.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "auth:setup": "powershell -ExecutionPolicy Bypass -File scripts/setup-auth-users.ps1",
@@ -52,6 +54,7 @@
     "react-router": "^7.6.2",
     "recharts": "^2.15.3",
     "sonner": "^2.0.5",
+    "tsx": "^4.20.6",
     "zod": "^3.25.67",
     "zustand": "^5.0.5"
   },

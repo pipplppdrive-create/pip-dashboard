@@ -36,5 +36,12 @@ export default tseslint.config(
       eqeqeq: ['error', 'smart'],
     },
   },
+  {
+    // Entrypoint server Render (proses Node): log siklus hidup diperbolehkan.
+    files: ['server/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
   prettier,
 );
