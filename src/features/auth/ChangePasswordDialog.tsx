@@ -81,6 +81,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: Props) {
                 className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-slate-400"
               />
               <Input
+                aria-label="Password saat ini"
                 type={show ? 'text' : 'password'}
                 autoComplete="current-password"
                 className="pl-10"
@@ -97,6 +98,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: Props) {
               className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-slate-400"
             />
             <Input
+              aria-label="Password baru"
               type={show ? 'text' : 'password'}
               autoComplete="new-password"
               className="pr-11 pl-10"
@@ -121,6 +123,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: Props) {
               className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-slate-400"
             />
             <Input
+              aria-label="Ulangi password baru"
               type={show ? 'text' : 'password'}
               autoComplete="new-password"
               className="pl-10"

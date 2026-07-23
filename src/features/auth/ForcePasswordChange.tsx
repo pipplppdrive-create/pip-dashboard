@@ -106,6 +106,7 @@ export function ForcePasswordChange() {
                   className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-slate-400"
                 />
                 <Input
+                  aria-label="Password baru"
                   autoFocus
                   type={show ? 'text' : 'password'}
                   autoComplete="new-password"
@@ -135,6 +136,7 @@ export function ForcePasswordChange() {
                   className="pointer-events-none absolute top-1/2 left-3 size-4.5 -translate-y-1/2 text-slate-400"
                 />
                 <Input
+                  aria-label="Ulangi password baru"
                   type={show ? 'text' : 'password'}
                   autoComplete="new-password"
                   className="pl-10"

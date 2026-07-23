@@ -11,6 +11,7 @@
 import {
   employeeAuthEmail,
   authEmailDomain,
+  signInWithPassword,
   updateAuthPassword,
   validateNewPassword,
   verifyPassword,
@@ -73,5 +74,14 @@ export async function POST(request: Request): Promise<Response> {
     entityLabel: 'Password diganti sendiri',
   });
 
-  return json({ ok: true });
+  // Mengganti password mencabut refresh token lama (perilaku Supabase Auth).
+  // Kembalikan sesi baru agar pengguna tidak terlempar ke halaman login pada
+  // muat ulang berikutnya — sesi lain pada perangkat lain tetap tercabut.
+  const session = await signInWithPassword(env, email, newPassword);
+
+  return json({
+    ok: true,
+    accessToken: session?.access_token ?? null,
+    refreshToken: session?.refresh_token ?? null,
+  });
 }

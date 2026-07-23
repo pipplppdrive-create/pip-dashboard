@@ -495,8 +495,20 @@ export const supabaseAdapter: DataService = {
         body: JSON.stringify({ newPassword, currentPassword }),
       }).catch(() => null);
       if (!res) throw new AppError('UNAVAILABLE', 'Server tidak dapat dihubungi.');
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        accessToken?: string | null;
+        refreshToken?: string | null;
+      };
       if (!res.ok) throw new ValidationError(payload.error ?? 'Gagal mengganti password.');
+      // Supabase mencabut refresh token lama saat password berubah — pasang
+      // sesi baru agar pengguna tetap masuk setelah muat ulang halaman.
+      if (payload.accessToken && payload.refreshToken) {
+        await getSupabase().auth.setSession({
+          access_token: payload.accessToken,
+          refresh_token: payload.refreshToken,
+        });
+      }
       cachedRole = null;
     },
 
