@@ -58,14 +58,27 @@ export function dbClient(env: ServerEnv): DbClient {
   };
 }
 
+/** Jenis akun sistem — sinkron dengan check constraint account_roles.role. */
+export type AccountType = 'ADMIN' | 'EMPLOYEE' | 'DEMO';
+
+export interface AccountInfo {
+  userId: string;
+  role: AccountType;
+  accountLabel: string;
+  employeeId: string | null;
+  isActive: boolean;
+  mustChangePassword: boolean;
+}
+
 /**
  * Verifikasi JWT Supabase dari header Authorization dan pastikan pemiliknya
- * terdaftar di account_roles. Role TIDAK PERNAH dipercaya dari client.
+ * terdaftar & aktif di account_roles. Jenis akun TIDAK PERNAH dipercaya dari
+ * client — selalu dibaca ulang dari database dengan service role.
  */
 export async function verifyRole(
   env: ServerEnv,
   request: Request,
-): Promise<{ userId: string; role: 'USER' | 'ADMIN' } | null> {
+): Promise<AccountInfo | null> {
   const auth = request.headers.get('authorization') ?? '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return null;
@@ -76,16 +89,65 @@ export async function verifyRole(
   const user = (await res.json()) as { id?: string };
   if (!user.id) return null;
   const db = dbClient(env);
-  const rows = await db.select<{ role: 'USER' | 'ADMIN' }>(
+  const rows = await db.select<{
+    role: AccountType;
+    account_label: string;
+    employee_id: string | null;
+    is_active: boolean;
+    must_change_password: boolean;
+  }>(
     'account_roles',
-    `select=role&user_id=eq.${user.id}`,
+    `select=role,account_label,employee_id,is_active,must_change_password&user_id=eq.${user.id}`,
   );
-  const role = rows[0]?.role;
-  if (!role) return null;
-  return { userId: user.id, role };
+  const row = rows[0];
+  if (!row || !row.is_active) return null;
+  return {
+    userId: user.id,
+    role: row.role,
+    accountLabel: row.account_label,
+    employeeId: row.employee_id,
+    isActive: row.is_active,
+    mustChangePassword: row.must_change_password,
+  };
 }
 
 export async function requireAdmin(env: ServerEnv, request: Request): Promise<boolean> {
   const info = await verifyRole(env, request);
   return info?.role === 'ADMIN';
+}
+
+/** Catat kejadian ke audit_log (best-effort — kegagalan tidak menggagalkan aksi). */
+export async function writeAudit(
+  env: ServerEnv,
+  entry: {
+    actorRole: string;
+    actorAccount: string;
+    employeeId?: string | null;
+    action: string;
+    entityType: string;
+    entityId?: string | null;
+    entityLabel?: string | null;
+    before?: unknown;
+    after?: unknown;
+    success?: boolean;
+    errorMessage?: string | null;
+  },
+): Promise<void> {
+  try {
+    await dbClient(env).insert('audit_log', {
+      actor_role: entry.actorRole,
+      actor_account: entry.actorAccount,
+      employee_id: entry.employeeId ?? null,
+      action: entry.action,
+      entity_type: entry.entityType,
+      entity_id: entry.entityId ?? null,
+      entity_label: entry.entityLabel ?? null,
+      before: entry.before ?? null,
+      after: entry.after ?? null,
+      success: entry.success ?? true,
+      error_message: entry.errorMessage ?? null,
+    });
+  } catch {
+    // audit tidak boleh menggagalkan operasi utama
+  }
 }

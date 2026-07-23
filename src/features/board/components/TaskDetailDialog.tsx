@@ -4,13 +4,10 @@ import {
   Archive,
   ArchiveRestore,
   CalendarClock,
-  Download,
   History,
-  Paperclip,
   Pencil,
   Star,
   Trash2,
-  Upload,
 } from 'lucide-react';
 import { EmptyState } from '@/components/feedback/empty-state';
 import { LoadingBlock } from '@/components/feedback/loading-block';
@@ -28,7 +25,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatDate, formatDateTime, formatRelative } from '@/lib/format';
 import { checklistStats, taskProgress } from '@/lib/progress';
 import { cn } from '@/lib/utils';
-import { errorMessage } from '@/services/errors';
 import { getDataService } from '@/services';
 import type {
   AuditEntry,
@@ -40,6 +36,9 @@ import type {
   Task,
 } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
+import { useSessionStore } from '@/features/auth/session-store';
+import { canEditTask, canManageTask, denyReason, viewerFrom } from '@/lib/permissions';
+import { AttachmentsPanel } from './AttachmentsPanel';
 import { qk } from '@/hooks/queries';
 import { DURATION_LABEL, PRIORITY_LABEL } from '../lib';
 import { useBoardErrorHandler } from '../useBoardActions';
@@ -90,11 +89,6 @@ export function TaskDetailDialog({
     queryFn: () => getDataService().tasks.listComments(taskId),
     enabled: open && !!taskId,
   });
-  const attachmentsQ = useQuery({
-    queryKey: qk.attachments(taskId),
-    queryFn: () => getDataService().attachments.list(taskId),
-    enabled: open && !!taskId,
-  });
   const historyQ = useQuery({
     queryKey: qk.taskHistory(taskId),
     queryFn: () => getDataService().tasks.history(taskId),
@@ -102,6 +96,11 @@ export function TaskDetailDialog({
   });
 
   const byId = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
+  const { role, accountEmployeeId, actorId } = useSessionStore();
+  const viewer = useMemo(
+    () => viewerFrom(role, accountEmployeeId ?? actorId, employees),
+    [role, accountEmployeeId, actorId, employees],
+  );
 
   const invalidateTasks = () => queryClient.invalidateQueries({ queryKey: ['tasks'] });
 
@@ -116,6 +115,10 @@ export function TaskDetailDialog({
     .filter((e): e is Employee => !!e);
   const progress = taskProgress(task);
   const cl = checklistStats(task.checklist);
+  // Hak akses ditegakkan server (RLS + trigger); di sini untuk umpan balik UI.
+  const bolehEdit = canEditTask(viewer, task);
+  const bolehKelola = canManageTask(viewer, task);
+  const alasanTolak = denyReason(viewer);
 
   async function withCtx(fn: (ctx: { employeeId: string }) => Promise<unknown>, errTitle: string) {
     const ctx = getCtx();
@@ -187,31 +190,6 @@ export function TaskDetailDialog({
     }
   }
 
-  async function handleUpload(file: File) {
-    if (!task) return;
-    const ctx = getCtx();
-    if (!ctx) return;
-    try {
-      await getDataService().attachments.upload(task.id, file, ctx);
-      await queryClient.invalidateQueries({ queryKey: qk.attachments(task.id) });
-      notify.success('Lampiran diunggah.', file.name);
-    } catch (err) {
-      notify.error('Unggah gagal', errorMessage(err));
-    }
-  }
-
-  async function handleDownload(id: string, fileName: string) {
-    try {
-      const url = await getDataService().attachments.getDownloadUrl(id);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } catch (err) {
-      notify.error('Unduh gagal', errorMessage(err));
-    }
-  }
 
   const commentTypeMeta: Record<CommentType, { label: string; tone: 'neutral' | 'danger' | 'info' }> = {
     KOMENTAR: { label: 'Komentar', tone: 'neutral' },
@@ -245,18 +223,36 @@ export function TaskDetailDialog({
             </Select>
           </Field>
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => onEdit(task)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!bolehEdit}
+              title={bolehEdit ? undefined : alasanTolak}
+              onClick={() => onEdit(task)}
+            >
               <Pencil className="size-3.5" aria-hidden />
               Ubah
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void toggleFocus()}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!bolehEdit}
+              title={bolehEdit ? undefined : alasanTolak}
+              onClick={() => void toggleFocus()}
+            >
               <Star
                 className={cn('size-3.5', task.isFocus && 'fill-warning-500 text-warning-500')}
                 aria-hidden
               />
               {task.isFocus ? 'Hapus fokus' : 'Tandai fokus'}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void toggleArchive()}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!bolehKelola}
+              title={bolehKelola ? undefined : alasanTolak}
+              onClick={() => void toggleArchive()}
+            >
               {task.archivedAt ? (
                 <>
                   <ArchiveRestore className="size-3.5" aria-hidden /> Pulihkan
@@ -267,10 +263,19 @@ export function TaskDetailDialog({
                 </>
               )}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => onDelete(task)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!bolehKelola}
+              title={bolehKelola ? undefined : alasanTolak}
+              onClick={() => onDelete(task)}
+            >
               <Trash2 className="size-3.5 text-danger-500" aria-hidden />
               Hapus
             </Button>
+            {!bolehEdit && (
+              <p className="w-full text-xs text-slate-500">{alasanTolak}</p>
+            )}
           </div>
         </div>
 
@@ -359,9 +364,7 @@ export function TaskDetailDialog({
             <TabsTrigger value="catatan">
               Catatan{(commentsQ.data?.length ?? 0) > 0 && ` (${commentsQ.data?.length})`}
             </TabsTrigger>
-            <TabsTrigger value="lampiran">
-              Lampiran{(attachmentsQ.data?.length ?? 0) > 0 && ` (${attachmentsQ.data?.length})`}
-            </TabsTrigger>
+            <TabsTrigger value="lampiran">Lampiran</TabsTrigger>
             <TabsTrigger value="riwayat">Riwayat</TabsTrigger>
           </TabsList>
 
@@ -483,77 +486,7 @@ export function TaskDetailDialog({
           </TabsContent>
 
           <TabsContent value="lampiran" className="pt-3">
-            <div className="space-y-3">
-              <label className="inline-flex">
-                <input
-                  type="file"
-                  className="sr-only"
-                  aria-label="Unggah lampiran"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleUpload(file);
-                    e.target.value = '';
-                  }}
-                />
-                <span className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50">
-                  <Upload className="size-3.5" aria-hidden />
-                  Unggah berkas
-                </span>
-              </label>
-              {attachmentsQ.isLoading ? (
-                <LoadingBlock compact />
-              ) : (attachmentsQ.data?.length ?? 0) === 0 ? (
-                <EmptyState
-                  compact
-                  icon={Paperclip}
-                  title="Belum ada lampiran"
-                  description="Tipe & ukuran berkas dibatasi sesuai Pengaturan."
-                />
-              ) : (
-                <ul className="divide-y divide-slate-100">
-                  {(attachmentsQ.data ?? []).map((att) => {
-                    const uploader = byId.get(att.uploadedByEmployeeId);
-                    return (
-                      <li key={att.id} className="flex items-center gap-3 py-2">
-                        <Paperclip className="size-4 shrink-0 text-slate-400" aria-hidden />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-800">
-                            {att.fileName}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {(att.size / 1024).toFixed(0)} KB · {uploader?.displayName ?? '–'} ·{' '}
-                            {formatRelative(att.createdAt)}
-                          </p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Unduh ${att.fileName}`}
-                          onClick={() => void handleDownload(att.id, att.fileName)}
-                        >
-                          <Download className="size-4" aria-hidden />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`Hapus ${att.fileName}`}
-                          onClick={() =>
-                            void withCtx(
-                              (ctx) => getDataService().attachments.remove(att.id, ctx),
-                              'Gagal menghapus lampiran',
-                            ).then(() =>
-                              queryClient.invalidateQueries({ queryKey: qk.attachments(task.id) }),
-                            )
-                          }
-                        >
-                          <Trash2 className="size-4 text-slate-400" aria-hidden />
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+            <AttachmentsPanel task={task} employees={employees} canEdit={bolehEdit} />
           </TabsContent>
 
           <TabsContent value="riwayat" className="pt-3">

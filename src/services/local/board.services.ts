@@ -1,5 +1,10 @@
 import { uid } from '@/lib/utils';
-import { ConflictError, NotFoundError, ValidationError } from '@/services/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '@/services/errors';
 import type {
   ActorContext,
   AuditEntry,
@@ -16,7 +21,17 @@ import type {
 } from '@/services/types';
 import { localBus } from './bus';
 import { COL, db, ensureSeeded, nowISO, writeAudit } from './db';
-import { requireActor, requireAdmin, requireSession } from './guard-util';
+import {
+  currentViewer,
+  pushNotifications,
+  requireActor,
+  requireAdmin,
+  requireSession,
+  requireTaskEdit,
+  requireTaskManage,
+  requireWrite,
+} from './guard-util';
+import { canDispose, taskParticipantIds } from '@/lib/permissions';
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -89,7 +104,7 @@ export const localBoard: BoardService = {
 
   async rename(title, expectedVersion, ctx): Promise<BoardInfo> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
     const trimmed = title.trim();
     if (!trimmed) throw new ValidationError('Judul board tidak boleh kosong.');
@@ -125,7 +140,7 @@ export const localBoard: BoardService = {
 
   async createStep(input, ctx): Promise<Step> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
     const name = input.name.trim();
     if (!name) throw new ValidationError('Nama step tidak boleh kosong.');
@@ -155,7 +170,7 @@ export const localBoard: BoardService = {
 
   async updateStep(id, patch, expectedVersion, ctx): Promise<Step> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
     const step = getStepOrThrow(id);
     if (step.deletedAt) throw new ValidationError('Step sudah dihapus.');
@@ -187,7 +202,7 @@ export const localBoard: BoardService = {
 
   async reorderSteps(orderedIds, ctx): Promise<void> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
     const current = activeSteps();
     const currentIds = new Set(current.map((s) => s.id));
@@ -217,7 +232,7 @@ export const localBoard: BoardService = {
 
   async deleteStep(id, opts, ctx): Promise<void> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
     const step = getStepOrThrow(id);
     if (step.deletedAt) return;
@@ -374,6 +389,81 @@ function assertNoNewInactivePic(
   }
 }
 
+/** Notifikasi perubahan penting pekerjaan (cerminan trigger notify_task_update). */
+function notifyTaskChanges(before: Task, after: Task, actorId: string): void {
+  const added = after.picMainIds.filter((x) => !before.picMainIds.includes(x));
+  if (added.length > 0) {
+    pushNotifications({
+      recipients: added,
+      type: after.taskType === 'DISPOSISI' ? 'TASK_DISPOSED' : 'TASK_ASSIGNED',
+      title:
+        after.taskType === 'DISPOSISI'
+          ? 'Disposisi pekerjaan untuk Anda'
+          : 'Anda ditetapkan sebagai PIC utama',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+    });
+    pushNotifications({
+      recipients: taskParticipantIds(after).filter((x) => !added.includes(x)),
+      type: 'PIC_CHANGED',
+      title: 'PIC utama pekerjaan berubah',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+    });
+  }
+  const addedMembers = after.picIds.filter((x) => !before.picIds.includes(x));
+  const removedMembers = before.picIds.filter((x) => !after.picIds.includes(x));
+  if (addedMembers.length > 0) {
+    pushNotifications({
+      recipients: addedMembers,
+      type: 'MEMBER_ADDED',
+      title: 'Anda diundang ke dalam tim pekerjaan',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+    });
+  }
+  if (removedMembers.length > 0) {
+    pushNotifications({
+      recipients: removedMembers,
+      type: 'MEMBER_REMOVED',
+      title: 'Anda dikeluarkan dari tim pekerjaan',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+    });
+  }
+  if (before.dueDate !== after.dueDate) {
+    pushNotifications({
+      recipients: taskParticipantIds(after),
+      type: 'DUE_DATE_CHANGED',
+      title: 'Tenggat pekerjaan berubah',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+      metadata: { from: before.dueDate, to: after.dueDate },
+    });
+  }
+  const delta = Math.abs(after.manualProgress - before.manualProgress);
+  if (
+    after.progressMode === 'MANUAL' &&
+    delta > 0 &&
+    (delta >= 20 || after.manualProgress === 100)
+  ) {
+    pushNotifications({
+      recipients: taskParticipantIds(after),
+      type: 'PROGRESS_CHANGED',
+      title: 'Progres pekerjaan diperbarui',
+      body: after.title,
+      taskId: after.id,
+      actorEmployeeId: actorId,
+      metadata: { from: before.manualProgress, to: after.manualProgress },
+    });
+  }
+}
+
 function stepName(id: string): string {
   return db.steps().find((s) => s.id === id)?.name ?? '?';
 }
@@ -400,8 +490,24 @@ export const localTasks: TaskService = {
 
   async create(input: TaskCreateInput, ctx: ActorContext): Promise<Task> {
     await ensureSeeded();
-    requireSession();
+    requireWrite();
     const employeeId = requireActor(ctx);
+    const viewer = currentViewer();
+    const taskType = input.taskType ?? 'MANDIRI';
+    // Staf hanya boleh membuat pekerjaan mandiri untuk dirinya sendiri;
+    // disposisi kepada pegawai lain hanya untuk Pimpinan/Admin (cerminan RLS).
+    if (taskType === 'DISPOSISI' && !canDispose(viewer)) {
+      throw new ForbiddenError('Hanya Pimpinan yang dapat membuat disposisi.');
+    }
+    if (taskType === 'MANDIRI' && viewer.accountType === 'EMPLOYEE') {
+      const mains = input.picMainIds ?? (input.picMainId ? [input.picMainId] : []);
+      const self = viewer.employeeId ?? employeeId;
+      if (mains.length > 0 && !mains.includes(self)) {
+        throw new ForbiddenError(
+          'Staf hanya dapat membuat pekerjaan untuk dirinya sendiri. Gunakan disposisi (Pimpinan) untuk menugaskan pegawai lain.',
+        );
+      }
+    }
     const step = getStepOrThrow(input.stepId);
     if (step.deletedAt) throw new ValidationError('Step tujuan sudah dihapus.');
     validateTaskFields(input);
@@ -442,22 +548,66 @@ export const localTasks: TaskService = {
       version: 1,
       createdByEmployeeId: employeeId,
       updatedByEmployeeId: employeeId,
+      ownerEmployeeId: employeeId,
+      taskType,
+      disposedByEmployeeId: taskType === 'DISPOSISI' ? employeeId : null,
+      driveFolderId: null,
     };
     saveTasks([...db.tasks(), task]);
+    pushNotifications({
+      recipients: task.picMainIds,
+      type: taskType === 'DISPOSISI' ? 'TASK_DISPOSED' : 'TASK_ASSIGNED',
+      title:
+        taskType === 'DISPOSISI'
+          ? 'Disposisi pekerjaan baru'
+          : 'Anda ditetapkan sebagai PIC utama',
+      body: task.title,
+      taskId: task.id,
+      actorEmployeeId: employeeId,
+    });
+    pushNotifications({
+      recipients: task.picIds,
+      type: 'MEMBER_ADDED',
+      title: 'Anda diundang ke dalam tim pekerjaan',
+      body: task.title,
+      taskId: task.id,
+      actorEmployeeId: employeeId,
+    });
     writeAudit({
       ...auditBase(employeeId),
-      action: 'CREATE',
+      action: taskType === 'DISPOSISI' ? 'DISPOSE' : 'CREATE',
       entityType: 'TASK',
       entityId: task.id,
       entityLabel: title,
-      after: { stepId: task.stepId, step: stepName(task.stepId), priority: task.priority },
+      after: {
+        stepId: task.stepId,
+        step: stepName(task.stepId),
+        priority: task.priority,
+        taskType,
+        picMainIds: task.picMainIds,
+        memberIds: task.picIds,
+      },
     });
     return task;
   },
 
   async update(id, patch, expectedVersion, ctx): Promise<Task> {
     await ensureSeeded();
-    requireSession();
+    // Anggota tim hanya boleh bagian operasional; sisanya butuh hak kelola.
+    requireTaskEdit(id);
+    const MANAGE_ONLY: Array<keyof TaskPatch> = [
+      'title',
+      'priority',
+      'dueDate',
+      'startDate',
+      'picMainIds',
+      'picMainId',
+      'picIds',
+      'ownerEmployeeId',
+      'taskType',
+      'durationType',
+    ];
+    if (MANAGE_ONLY.some((f) => patch[f] !== undefined)) requireTaskManage(id);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(id);
     if (task.deletedAt) throw new ValidationError('Pekerjaan sudah dihapus.');
@@ -491,6 +641,7 @@ export const localTasks: TaskService = {
     next.updatedByEmployeeId = employeeId;
     next.version = task.version + 1;
     saveTasks(db.tasks().map((t) => (t.id === id ? next : t)));
+    notifyTaskChanges(task, next, employeeId);
     writeAudit({
       ...auditBase(employeeId),
       action: 'UPDATE',
@@ -505,7 +656,7 @@ export const localTasks: TaskService = {
 
   async move(id, to, ctx): Promise<Task> {
     await ensureSeeded();
-    requireSession();
+    requireTaskEdit(id);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(id);
     if (task.deletedAt) throw new ValidationError('Pekerjaan sudah dihapus.');
@@ -541,6 +692,18 @@ export const localTasks: TaskService = {
     );
 
     if (fromStepId !== to.stepId) {
+      pushNotifications({
+        recipients: taskParticipantIds(task),
+        type: targetStep.kind === 'BLOCKED' ? 'TASK_BLOCKED' : 'STATUS_CHANGED',
+        title:
+          targetStep.kind === 'BLOCKED'
+            ? 'Pekerjaan masuk status terhambat'
+            : 'Status pekerjaan berubah',
+        body: task.title,
+        taskId: id,
+        actorEmployeeId: employeeId,
+        metadata: { from: stepName(fromStepId), to: targetStep.name },
+      });
       writeAudit({
         ...auditBase(employeeId),
         action: 'MOVE',
@@ -556,7 +719,7 @@ export const localTasks: TaskService = {
 
   async archive(id, ctx): Promise<Task> {
     await ensureSeeded();
-    requireSession();
+    requireTaskManage(id);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(id);
     if (task.archivedAt) return task;
@@ -580,7 +743,7 @@ export const localTasks: TaskService = {
 
   async unarchive(id, ctx): Promise<Task> {
     await ensureSeeded();
-    requireSession();
+    requireTaskManage(id);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(id);
     if (!task.archivedAt) return task;
@@ -605,7 +768,7 @@ export const localTasks: TaskService = {
 
   async softDelete(id, reason, ctx): Promise<void> {
     await ensureSeeded();
-    requireSession();
+    requireTaskManage(id);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(id);
     if (task.deletedAt) return;
@@ -701,7 +864,7 @@ export const localTasks: TaskService = {
 
   async addComment(taskId, type: CommentType, text, ctx): Promise<TaskComment> {
     await ensureSeeded();
-    requireSession();
+    requireTaskEdit(taskId);
     const employeeId = requireActor(ctx);
     const task = getTaskOrThrow(taskId);
     const trimmed = text.trim();

@@ -109,8 +109,8 @@ test.describe('login maskot', () => {
   test('animasi maskot tidak menghambat pengisian & submit login', async ({ page }) => {
     await page.goto('/login');
     // Interaksi cepat username → password → toggle lihat password → submit
-    const username = page.getByPlaceholder('Username');
-    const password = page.getByPlaceholder('Password');
+    const username = page.getByLabel('NIP atau Username');
+    const password = page.getByLabel('Password', { exact: true });
     await username.click();
     await username.pressSequentially('x', { delay: 10 });
     await username.fill('');

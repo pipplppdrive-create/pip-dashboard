@@ -82,8 +82,12 @@ export const localEmployees: EmployeeService = {
       initials: input.initials.trim().toUpperCase(),
       color: input.color,
       nip: input.nip?.trim() || null,
+      nipNormalized: input.nip?.trim().replace(/[^0-9]/g, '') || null,
+      username: input.username?.trim().toLowerCase() || null,
       position: input.position.trim(),
       team: input.team.trim(),
+      level: input.level ?? 'STAFF',
+      supervisorId: input.supervisorId ?? null,
       sortOrder: input.sortOrder ?? employees.length,
       active: input.active ?? true,
       avatarPath: null,
@@ -562,16 +566,18 @@ export const localSettings: SettingsService = {
     }
     const auth = db.auth();
     if (!auth) throw new NotFoundError('Penyimpanan autentikasi tidak ditemukan.');
-    db.write(COL.auth, {
-      ...auth,
-      userPasswordHash: await hashPassword(newPassword),
-      updatedAt: nowISO(),
-    });
+    const hash = await hashPassword(newPassword);
+    db.write(COL.auth, { ...auth, userPasswordHash: hash, updatedAt: nowISO() });
+    // Akun bersama lama kini berjenis DEMO (read-only) — password ikut diperbarui.
+    db.write(
+      COL.accounts,
+      db.accounts().map((a) => (a.accountType === 'DEMO' ? { ...a, passwordHash: hash } : a)),
+    );
     writeAudit({
       ...auditBase(employeeId),
       action: 'PASSWORD_CHANGE',
       entityType: 'SETTINGS',
-      entityLabel: 'Password akun User diganti',
+      entityLabel: 'Password akun demo diganti',
     });
   },
 

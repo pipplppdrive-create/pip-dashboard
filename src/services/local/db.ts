@@ -1,6 +1,8 @@
 import type {
+  AccountType,
   ActivityPlanItem,
   AppSettings,
+  AttachmentGroup,
   AuditAction,
   AuditEntityType,
   AuditEntry,
@@ -11,6 +13,7 @@ import type {
   DistributionSnapshot,
   Employee,
   Label,
+  NotificationItem,
   Role,
   SessionInfo,
   SheetBinding,
@@ -52,6 +55,9 @@ export const COL = {
   columnMappings: 'columnMappings',
   syncRuns: 'syncRuns',
   activities: 'activities',
+  accounts: 'accounts',
+  notifications: 'notifications',
+  attachmentGroups: 'attachmentGroups',
 } as const;
 
 export interface AuthRecord {
@@ -60,6 +66,25 @@ export interface AuthRecord {
   adminUsername: string;
   adminPasswordHash: string;
   updatedAt: string;
+}
+
+/**
+ * Akun mode lokal — cerminan `account_roles` produksi.
+ * Password disimpan sebagai HASH (mode lokal saja); produksi memakai
+ * Supabase Auth dan tidak pernah menyimpan password di tabel aplikasi.
+ */
+export interface LocalAccountRecord {
+  id: string;
+  accountType: AccountType;
+  /** Nama akun sistem ('admin', 'user') — kosong untuk akun pegawai. */
+  label: string;
+  employeeId: string | null;
+  passwordHash: string;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt: string | null;
+  passwordChangedAt: string | null;
+  createdAt: string;
 }
 
 interface MetaRecord {
@@ -94,7 +119,7 @@ export async function hashPassword(password: string): Promise<string> {
 // Seed sekali pakai
 // ---------------------------------------------------------------------------
 
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 let seedPromise: Promise<void> | null = null;
 
 export function ensureSeeded(): Promise<void> {
@@ -129,6 +154,34 @@ export function ensureSeeded(): Promise<void> {
       writeCollection(COL.syncRuns, seed.syncRuns);
       writeCollection(COL.activities, seed.activities);
       writeCollection<SessionInfo[]>(COL.sessions, []);
+      writeCollection<LocalAccountRecord[]>(COL.accounts, [
+        {
+          id: 'acc-admin',
+          accountType: 'ADMIN',
+          label: 'admin',
+          employeeId: null,
+          passwordHash: auth.adminPasswordHash,
+          isActive: true,
+          mustChangePassword: false,
+          lastLoginAt: null,
+          passwordChangedAt: null,
+          createdAt: nowISO(),
+        },
+        {
+          id: 'acc-demo',
+          accountType: 'DEMO',
+          label: 'user',
+          employeeId: null,
+          passwordHash: auth.userPasswordHash,
+          isActive: true,
+          mustChangePassword: false,
+          lastLoginAt: null,
+          passwordChangedAt: null,
+          createdAt: nowISO(),
+        },
+      ]);
+      writeCollection<NotificationItem[]>(COL.notifications, []);
+      writeCollection<AttachmentGroup[]>(COL.attachmentGroups, []);
       writeCollection<Record<string, LoginAttemptRecord>>(COL.loginAttempts, {});
       writeCollection<MetaRecord>(COL.meta, { seedVersion: SEED_VERSION, seededAt: nowISO() });
     })();
@@ -151,6 +204,10 @@ function normalizeEmployee(e: Employee): Employee {
     ...e,
     avatarPath: e.avatarPath ?? null,
     avatarUpdatedAt: e.avatarUpdatedAt ?? null,
+    nipNormalized: e.nipNormalized ?? (e.nip ? e.nip.replace(/[^0-9]/g, '') || null : null),
+    username: e.username ?? (e.displayName.toLowerCase().replace(/[^a-z0-9._-]/g, '') || null),
+    level: e.level ?? 'STAFF',
+    supervisorId: e.supervisorId ?? null,
   };
 }
 
@@ -166,6 +223,10 @@ function normalizeTask(t: Task): Task {
     picMainIds: mains,
     picMainId: mains[0] ?? null,
     picIds: (t.picIds ?? []).filter((id) => !mains.includes(id)),
+    ownerEmployeeId: t.ownerEmployeeId ?? t.createdByEmployeeId ?? mains[0] ?? null,
+    taskType: t.taskType ?? 'MANDIRI',
+    disposedByEmployeeId: t.disposedByEmployeeId ?? null,
+    driveFolderId: t.driveFolderId ?? null,
   };
 }
 
@@ -189,6 +250,9 @@ export const db = {
   syncRuns: () => readCollection<SyncRun[]>(COL.syncRuns, []),
   activities: () => readCollection<ActivityPlanItem[]>(COL.activities, []),
   auth: () => readCollection<AuthRecord | null>(COL.auth, null),
+  accounts: () => readCollection<LocalAccountRecord[]>(COL.accounts, []),
+  notifications: () => readCollection<NotificationItem[]>(COL.notifications, []),
+  attachmentGroups: () => readCollection<AttachmentGroup[]>(COL.attachmentGroups, []),
   loginAttempts: () => readCollection<Record<string, LoginAttemptRecord>>(COL.loginAttempts, {}),
   write: writeCollection,
 };

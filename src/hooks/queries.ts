@@ -37,7 +37,59 @@ export const qk = {
   syncRuns: (sourceId?: string, limit?: number) =>
     ['integrations', 'runs', sourceId ?? null, limit ?? null] as const,
   googleStatus: () => ['integrations', 'google'] as const,
+  notifications: (unreadOnly = false) => ['notifications', { unreadOnly }] as const,
+  notificationsUnread: () => ['notifications', 'unread'] as const,
+  accounts: () => ['accounts', 'list'] as const,
+  attachmentGroups: (taskId: string) => ['attachments', 'groups', taskId] as const,
+  attachmentCounts: () => ['attachments', 'counts'] as const,
 } as const;
+
+/** Notifikasi milik pengguna aktif (popup lonceng pada header). */
+export function useNotifications(unreadOnly = false, enabled = true) {
+  return useQuery({
+    queryKey: qk.notifications(unreadOnly),
+    queryFn: () => getDataService().notifications.list({ limit: 30, unreadOnly }),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+export function useUnreadNotificationCount(enabled = true) {
+  return useQuery({
+    queryKey: qk.notificationsUnread(),
+    queryFn: () => getDataService().notifications.unreadCount(),
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+/** Daftar akun pegawai (khusus Admin). */
+export function useEmployeeAccounts(enabled: boolean) {
+  return useQuery({
+    queryKey: qk.accounts(),
+    queryFn: () => getDataService().accounts.list(),
+    enabled,
+  });
+}
+
+/** Kelompok lampiran + riwayat versi sebuah pekerjaan. */
+export function useAttachmentGroups(taskId: string | null, includeDeleted = false) {
+  return useQuery({
+    queryKey: [...qk.attachmentGroups(taskId ?? ''), { includeDeleted }] as const,
+    queryFn: () =>
+      getDataService().attachments.listGroups(taskId ?? '', { includeDeleted }),
+    enabled: Boolean(taskId),
+  });
+}
+
+/** Jumlah lampiran per pekerjaan (indikator kartu board). */
+export function useAttachmentCounts() {
+  return useQuery({
+    queryKey: qk.attachmentCounts(),
+    queryFn: () => getDataService().attachments.countsByTask(),
+    staleTime: 60_000,
+  });
+}
 
 export function useEmployees(includeInactive = false) {
   return useQuery({

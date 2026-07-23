@@ -57,19 +57,14 @@ test.describe('dashboard', () => {
     );
   });
 
-  test('Pekerjaan › Ringkasan tetap menyajikan ringkasan pekerjaan lengkap', async ({ page }) => {
+  test('halaman Pekerjaan menampilkan indikator cepat, bukan tab Ringkasan', async ({ page }) => {
     await loginAsUser(page);
-    await page.goto('/pekerjaan?view=ringkasan');
-    await expect(page.getByText('Perlu Perhatian')).toBeVisible();
-    // Seed: rekonsiliasi Juni melewati tenggat & terhambat
-    await expect(page.getByText('Melewati tenggat').first()).toBeVisible();
-    await expect(page.getByText('Fokus Hari Ini')).toBeVisible();
-    await expect(page.getByText('Aktivitas Terbaru')).toBeVisible();
-    await expect(
-      page
-        .getByText(/memperbarui data penyaluran|membuat|memindahkan|memperbarui|menyelesaikan/)
-        .first(),
-    ).toBeVisible();
+    await page.goto('/pekerjaan');
+    const indikator = page.getByRole('group', { name: 'Indikator cepat' });
+    await expect(indikator.getByRole('button', { name: /Terlambat/ })).toBeVisible();
+    await expect(indikator.getByRole('button', { name: /Mendekati Tenggat/ })).toBeVisible();
+    await expect(indikator.getByRole('button', { name: /Terhambat/ })).toBeVisible();
+    await expect(indikator.getByRole('button', { name: /Tanpa PIC/ })).toBeVisible();
   });
 
   test('tidak ada data individual siswa', async ({ page }) => {

@@ -3,6 +3,8 @@ import type {
   ActivityPlanItem,
   AppSettings,
   Attachment,
+  AttachmentGroup,
+  AttachmentVersion,
   AuditEntry,
   BoardInfo,
   Category,
@@ -12,6 +14,7 @@ import type {
   DistributionSnapshot,
   Employee,
   Label,
+  NotificationItem,
   Role,
   SessionInfo,
   SheetBinding,
@@ -30,8 +33,12 @@ export interface EmployeeRow {
   initials: string;
   color: string;
   nip: string | null;
+  nip_normalized?: string | null;
+  username?: string | null;
   position: string;
   team: string;
+  level?: Employee['level'] | null;
+  supervisor_id?: string | null;
   sort_order: number;
   active: boolean;
   avatar_path: string | null;
@@ -47,8 +54,12 @@ export const toEmployee = (r: EmployeeRow): Employee => ({
   initials: r.initials,
   color: r.color,
   nip: r.nip ?? null,
+  nipNormalized: r.nip_normalized ?? null,
+  username: r.username ?? null,
   position: r.position,
   team: r.team,
+  level: r.level ?? 'STAFF',
+  supervisorId: r.supervisor_id ?? null,
   sortOrder: r.sort_order,
   active: r.active,
   avatarPath: r.avatar_path ?? null,
@@ -121,6 +132,10 @@ export interface TaskRow {
   version: number;
   created_by_employee_id: string | null;
   updated_by_employee_id: string | null;
+  owner_employee_id?: string | null;
+  task_type?: Task['taskType'] | null;
+  disposed_by_employee_id?: string | null;
+  drive_folder_id?: string | null;
 }
 
 export const toTask = (r: TaskRow): Task => {
@@ -159,6 +174,10 @@ export const toTask = (r: TaskRow): Task => {
   version: r.version,
   createdByEmployeeId: r.created_by_employee_id,
   updatedByEmployeeId: r.updated_by_employee_id,
+  ownerEmployeeId: r.owner_employee_id ?? r.created_by_employee_id ?? picMainIds[0] ?? null,
+  taskType: r.task_type ?? 'MANDIRI',
+  disposedByEmployeeId: r.disposed_by_employee_id ?? null,
+  driveFolderId: r.drive_folder_id ?? null,
   };
 };
 
@@ -534,3 +553,102 @@ export interface GoogleConnRow {
   last_used_at: string | null;
   token_status: 'AKTIF' | 'KEDALUWARSA' | 'DICABUT' | null;
 }
+
+// ---------------------------------------------------------------------------
+// Notifikasi per pengguna
+// ---------------------------------------------------------------------------
+
+export interface NotificationRow {
+  id: string;
+  recipient_employee_id: string;
+  type: NotificationItem['type'];
+  title: string;
+  body: string;
+  task_id: string | null;
+  actor_employee_id: string | null;
+  metadata: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export const toNotification = (r: NotificationRow): NotificationItem => ({
+  id: r.id,
+  recipientEmployeeId: r.recipient_employee_id,
+  type: r.type,
+  title: r.title,
+  body: r.body ?? '',
+  taskId: r.task_id,
+  actorEmployeeId: r.actor_employee_id,
+  metadata: r.metadata ?? {},
+  readAt: r.read_at,
+  createdAt: r.created_at,
+});
+
+// ---------------------------------------------------------------------------
+// Lampiran berkelompok + riwayat versi
+// ---------------------------------------------------------------------------
+
+export interface AttachmentVersionRow {
+  id: string;
+  group_id: string;
+  version: number;
+  file_name: string;
+  size: number;
+  mime_type: string;
+  storage_backend: AttachmentVersion['storageBackend'];
+  drive_file_id: string | null;
+  drive_web_view_link: string | null;
+  storage_path: string | null;
+  checksum: string | null;
+  change_note: string;
+  uploaded_by_employee_id: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  deleted_by_employee_id: string | null;
+}
+
+export const toAttachmentVersion = (r: AttachmentVersionRow): AttachmentVersion => ({
+  id: r.id,
+  groupId: r.group_id,
+  version: r.version,
+  fileName: r.file_name,
+  size: Number(r.size),
+  mimeType: r.mime_type,
+  storageBackend: r.storage_backend,
+  driveFileId: r.drive_file_id,
+  driveWebViewLink: r.drive_web_view_link,
+  checksum: r.checksum,
+  changeNote: r.change_note ?? '',
+  uploadedByEmployeeId: r.uploaded_by_employee_id,
+  createdAt: r.created_at,
+  deletedAt: r.deleted_at,
+  deletedByEmployeeId: r.deleted_by_employee_id,
+});
+
+export interface AttachmentGroupRow {
+  id: string;
+  task_id: string;
+  title: string;
+  drive_folder_id: string | null;
+  created_by_employee_id: string | null;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  deleted_by_employee_id: string | null;
+  attachment_versions?: AttachmentVersionRow[];
+}
+
+export const toAttachmentGroup = (r: AttachmentGroupRow): AttachmentGroup => ({
+  id: r.id,
+  taskId: r.task_id,
+  title: r.title,
+  driveFolderId: r.drive_folder_id,
+  createdByEmployeeId: r.created_by_employee_id,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+  deletedAt: r.deleted_at,
+  deletedByEmployeeId: r.deleted_by_employee_id,
+  versions: (r.attachment_versions ?? [])
+    .map(toAttachmentVersion)
+    .sort((a, b) => b.version - a.version),
+});

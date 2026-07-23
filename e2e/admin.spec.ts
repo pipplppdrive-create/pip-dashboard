@@ -241,8 +241,8 @@ test.describe('admin', () => {
     // Logout lalu login user dengan password baru
     await page.getByRole('button', { name: 'Menu pengguna' }).click();
     await page.getByRole('menuitem', { name: 'Keluar' }).click();
-    await page.getByPlaceholder('Username').fill(USER_USERNAME);
-    await page.getByPlaceholder('Password').fill('timpip-2026-baru');
+    await page.getByLabel('NIP atau Username').fill(USER_USERNAME);
+    await page.getByLabel('Password', { exact: true }).fill('timpip-2026-baru');
     await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page).toHaveURL(/\/dashboard/);
   });

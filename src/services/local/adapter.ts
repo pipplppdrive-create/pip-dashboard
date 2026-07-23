@@ -1,12 +1,13 @@
 import type { DataService } from '@/services/types';
 import { localAttachments } from './attachments.service';
 import { localAudit } from './audit.service';
-import { localAuth } from './auth.service';
+import { localAccounts, localAuth } from './auth.service';
 import { localBoard, localTasks } from './board.services';
 import { localBus } from './bus';
 import { localEmployees, localSettings, localTaxonomy, localTemplates } from './core.services';
 import { localDistribution } from './distribution.service';
 import { localActivities, localIntegrations } from './integrations.service';
+import { localNotifications } from './notifications.service';
 
 /**
  * Adapter LOKAL — development/demo tanpa backend.
@@ -16,6 +17,8 @@ import { localActivities, localIntegrations } from './integrations.service';
 export const localAdapter: DataService = {
   mode: 'local',
   auth: localAuth,
+  accounts: localAccounts,
+  notifications: localNotifications,
   employees: localEmployees,
   board: localBoard,
   tasks: localTasks,

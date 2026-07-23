@@ -8,7 +8,7 @@ import { hmacSha256Hex } from '../../_lib/crypto.js';
 import { getEnv, googleConfigured, supabaseConfigured } from '../../_lib/env.js';
 import { fail, json } from '../../_lib/http.js';
 import { requireAdmin } from '../../_lib/supabase.js';
-import { SHEETS_SCOPE } from '../../_lib/google.js';
+import { DRIVE_SCOPE, SHEETS_SCOPE } from '../../_lib/google.js';
 
 export async function GET(request: Request): Promise<Response> {
   const env = getEnv();
@@ -28,7 +28,9 @@ export async function GET(request: Request): Promise<Response> {
   url.searchParams.set('client_id', env.googleClientId);
   url.searchParams.set('redirect_uri', env.googleRedirectUri);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('scope', `${SHEETS_SCOPE} openid email`);
+  // Scope paling sempit yang dibutuhkan: baca spreadsheet + berkas yang DIBUAT
+  // aplikasi ini di Drive (drive.file, bukan akses penuh Drive).
+  url.searchParams.set('scope', `${SHEETS_SCOPE} ${DRIVE_SCOPE} openid email`);
   url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent');
   url.searchParams.set('state', state);

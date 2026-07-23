@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'node:fs';
 import path from 'node:path';
 import WebSocket from 'ws';
-import { loginAsUser } from './helpers';
+import { loginAsAdmin } from './helpers';
 
 function readDotEnv(): Record<string, string> {
   const envPath = path.resolve(process.cwd(), '.env.local');
@@ -50,7 +50,7 @@ test.describe('audit metadata', () => {
     const actorId = actor.id as string;
 
     const title = `E2E audit metadata ${Date.now()}`;
-    await loginAsUser(page, 'Tri Hesti Wahyudiati');
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await page.getByRole('button', { name: 'Pekerjaan baru' }).click();
     const dialog = page.getByRole('dialog', { name: 'Pekerjaan Baru' });

@@ -1,7 +1,21 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Filter, Pencil, Plus, Search, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  Archive,
+  CalendarClock,
+  Check,
+  Filter,
+  MoreHorizontal,
+  OctagonAlert,
+  Pencil,
+  Plus,
+  Search,
+  UserRoundX,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { ErrorState } from '@/components/feedback/error-state';
 import { notify } from '@/components/feedback/toaster';
 import { Badge } from '@/components/ui/badge';
@@ -13,12 +27,23 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { arrayMove, cn } from '@/lib/utils';
+import { todayISO } from '@/lib/format';
+import { canCreateTask, denyReason, viewerFrom } from '@/lib/permissions';
+import {
+  DropdownContent,
+  DropdownItem,
+  DropdownRoot,
+  DropdownSeparator,
+  DropdownTrigger,
+} from '@/components/ui/dropdown';
+import { Modal } from '@/components/ui/dialog';
 import { getDataService } from '@/services';
 import type { DurationType, Priority, Step, Task } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
 import {
   qk,
   useAllComments,
+  useAttachmentCounts,
   useBoard,
   useCategories,
   useEmployees,
@@ -26,9 +51,9 @@ import {
   useSteps,
   useTasks,
 } from '@/hooks/queries';
+import { useSessionStore } from '@/features/auth/session-store';
 import { useQuery } from '@tanstack/react-query';
 import { ArchiveList } from './components/ArchiveList';
-import { BoardSummary } from './components/BoardSummary';
 import { PicPicker } from './components/PicPicker';
 import { DeleteStepDialog } from './components/DeleteStepDialog';
 import { DeleteTaskDialog } from './components/DeleteTaskDialog';
@@ -37,12 +62,17 @@ import { StepDialog } from './components/StepDialog';
 import { TaskDetailDialog } from './components/TaskDetailDialog';
 import { TaskDialog } from './components/TaskDialog';
 import {
+  applyScope,
   buildColumns,
   countActiveFilters,
   DURATION_LABEL,
   EMPTY_FILTERS,
   PRIORITY_LABEL,
+  QUICK_FILTER_LABEL,
+  quickFilterCounts,
   type BoardFilters,
+  type BoardScope,
+  type QuickFilterKey,
 } from './lib';
 import { useBoardErrorHandler, useMoveTask } from './useBoardActions';
 
@@ -54,18 +84,7 @@ export default function BoardPage() {
   const labelsQ = useLabels();
   const employeesQ = useEmployees(true);
   const commentsQ = useAllComments();
-  const attachmentsCountQ = useQuery({
-    queryKey: ['attachments', 'all-count'] as const,
-    queryFn: async () => {
-      // hitung lampiran per task untuk indikator kartu
-      const tasks = await getDataService().tasks.list({ includeArchived: true });
-      const entries = await Promise.all(
-        tasks.map(async (t) => [t.id, (await getDataService().attachments.list(t.id)).length] as const),
-      );
-      return new Map(entries);
-    },
-    staleTime: 60_000,
-  });
+  const attachmentsCountQ = useAttachmentCounts();
   const templatesQ = useQuery({
     queryKey: qk.templates(false),
     queryFn: () => getDataService().templates.list(),
@@ -74,14 +93,20 @@ export default function BoardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const stepFilter = searchParams.get('step');
   const openTaskId = searchParams.get('task');
-  // Tampilan halaman: board (default) | ringkasan | arsip — dapat ditautkan
-  // langsung dari Dashboard lewat ?view=ringkasan.
-  const viewParam = searchParams.get('view');
-  const view: 'board' | 'ringkasan' | 'arsip' =
-    viewParam === 'ringkasan' ? 'ringkasan' : viewParam === 'arsip' ? 'arsip' : 'board';
+  // Halaman Pekerjaan hanya punya DUA pilihan tampilan (spesifikasi §H):
+  // Semua Pekerjaan (?scope=all) dan Pekerjaan Saya (?scope=mine).
+  // Keduanya memakai record & Board yang SAMA — hanya berbeda saringan.
+  const scope: BoardScope = searchParams.get('scope') === 'mine' ? 'mine' : 'all';
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
+  // Indikator cepat dapat ditautkan dari Dashboard lewat ?quick=TERLAMBAT dll.
+  const quickParam = searchParams.get('quick');
+  const [filters, setFilters] = useState<BoardFilters>(() => ({
+    ...EMPTY_FILTERS,
+    quick:
+      quickParam && quickParam in QUICK_FILTER_LABEL ? (quickParam as QuickFilterKey) : null,
+  }));
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
 
@@ -100,8 +125,25 @@ export default function BoardPage() {
   const moveTask = useMoveTask();
 
   const steps = useMemo(() => stepsQ.data ?? [], [stepsQ.data]);
-  const tasks = useMemo(() => tasksQ.data ?? [], [tasksQ.data]);
-  const employees = employeesQ.data ?? [];
+  const allTasks = useMemo(() => tasksQ.data ?? [], [tasksQ.data]);
+  const employees = useMemo(() => employeesQ.data ?? [], [employeesQ.data]);
+
+  const { role, accountEmployeeId, actorId } = useSessionStore();
+  const viewer = useMemo(
+    () => viewerFrom(role, accountEmployeeId ?? actorId, employees),
+    [role, accountEmployeeId, actorId, employees],
+  );
+  const today = todayISO();
+
+  // "Pekerjaan Saya" = saringan murni dari data yang sama.
+  const tasks = useMemo(
+    () => applyScope(allTasks, scope, viewer) as typeof allTasks,
+    [allTasks, scope, viewer],
+  );
+  const quickCounts = useMemo(
+    () => quickFilterCounts(tasks, steps, today),
+    [tasks, steps, today],
+  );
   const categories = categoriesQ.data ?? [];
   const labels = labelsQ.data ?? [];
 
@@ -116,8 +158,8 @@ export default function BoardPage() {
   );
 
   const columns = useMemo(
-    () => buildColumns(tasks, steps, effectiveFilters),
-    [tasks, steps, effectiveFilters],
+    () => buildColumns(tasks, steps, effectiveFilters, { todayIso: today }),
+    [tasks, steps, effectiveFilters, today],
   );
 
   const countsByTask = useMemo(() => {
@@ -127,7 +169,7 @@ export default function BoardPage() {
       cur.comments += 1;
       map.set(c.taskId, cur);
     }
-    for (const [taskId, count] of attachmentsCountQ.data ?? new Map<string, number>()) {
+    for (const [taskId, count] of Object.entries(attachmentsCountQ.data ?? {})) {
       const cur = map.get(taskId) ?? { comments: 0, attachments: 0 };
       cur.attachments = count;
       map.set(taskId, cur);
@@ -135,9 +177,15 @@ export default function BoardPage() {
     return map;
   }, [commentsQ.data, attachmentsCountQ.data]);
 
+  // Detail dibuka dari seluruh data agar deep link notifikasi tetap berfungsi
+  // walau kartu tidak masuk saringan yang sedang aktif.
   const openTask = useMemo(
-    () => (openTaskId ? (tasks.find((t) => t.id === openTaskId) ?? null) : null),
-    [openTaskId, tasks],
+    () => (openTaskId ? (allTasks.find((t) => t.id === openTaskId) ?? null) : null),
+    [openTaskId, allTasks],
+  );
+  const archivedTasks = useMemo(
+    () => allTasks.filter((t) => t.archivedAt && !t.deletedAt),
+    [allTasks],
   );
 
   const filterCount = countActiveFilters(filters);
@@ -166,16 +214,20 @@ export default function BoardPage() {
     );
   }
 
-  function setView(next: 'board' | 'ringkasan' | 'arsip') {
+  function setScope(next: BoardScope) {
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev);
-        if (next === 'board') params.delete('view');
-        else params.set('view', next);
+        if (next === 'all') params.delete('scope');
+        else params.set('scope', next);
         return params;
       },
       { replace: true },
     );
+  }
+
+  function toggleQuick(key: QuickFilterKey) {
+    setFilters((f) => ({ ...f, quick: f.quick === key ? null : key }));
   }
 
   async function saveTitle() {
@@ -283,30 +335,26 @@ export default function BoardPage() {
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Tampilan halaman: Board (kanban) | Ringkasan | Arsip */}
+          {/* Dua pilihan tampilan dalam halaman — bukan board/tabel terpisah */}
           <div
             role="group"
-            aria-label="Tampilan pekerjaan"
+            aria-label="Cakupan pekerjaan"
             className="inline-flex items-center gap-1 rounded-xl bg-slate-200/60 p-1"
           >
             {(
               [
-                { value: 'board', label: 'Board' },
-                { value: 'ringkasan', label: 'Ringkasan' },
-                {
-                  value: 'arsip',
-                  label: `Arsip (${tasks.filter((t) => t.archivedAt && !t.deletedAt).length})`,
-                },
+                { value: 'all', label: 'Semua Pekerjaan' },
+                { value: 'mine', label: 'Pekerjaan Saya' },
               ] as const
             ).map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                aria-pressed={view === opt.value}
-                onClick={() => setView(opt.value)}
+                aria-pressed={scope === opt.value}
+                onClick={() => setScope(opt.value)}
                 className={cn(
                   'pressable inline-flex min-h-9 cursor-pointer items-center rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors',
-                  view === opt.value
+                  scope === opt.value
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-600 hover:text-slate-900',
                 )}
@@ -315,7 +363,6 @@ export default function BoardPage() {
               </button>
             ))}
           </div>
-          {view === 'board' && (
           <div className="relative">
             <Search
               className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
@@ -329,8 +376,6 @@ export default function BoardPage() {
               className="h-9 w-48 pl-9 lg:w-64"
             />
           </div>
-          )}
-          {view === 'board' && (
           <Popover>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9">
@@ -412,6 +457,31 @@ export default function BoardPage() {
                   ))}
                 </Select>
               </Field>
+              <Field label="Tenggat">
+                <Select
+                  value={filters.dueFilter}
+                  onChange={(e) =>
+                    setFilters((f) => ({
+                      ...f,
+                      dueFilter: e.target.value as BoardFilters['dueFilter'],
+                    }))
+                  }
+                >
+                  <option value="ALL">Semua tenggat</option>
+                  <option value="HAS_DUE">Punya tenggat</option>
+                  <option value="NO_DUE">Tanpa tenggat</option>
+                </Select>
+              </Field>
+              {/* Arsip diakses dari sini & menu ⋯ — bukan tab utama. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => setArchiveOpen(true)}
+              >
+                <Archive className="size-4" aria-hidden />
+                Lihat pekerjaan diarsipkan ({archivedTasks.length})
+              </Button>
               {filterCount > 0 && (
                 <Button
                   variant="ghost"
@@ -424,10 +494,11 @@ export default function BoardPage() {
               )}
             </PopoverContent>
           </Popover>
-          )}
           <Button
             size="sm"
             className="h-9"
+            disabled={!canCreateTask(viewer)}
+            title={canCreateTask(viewer) ? undefined : denyReason(viewer)}
             onClick={() => {
               setTaskDialogTask(null);
               setTaskDialogStepId(undefined);
@@ -437,7 +508,75 @@ export default function BoardPage() {
             <Plus className="size-4" aria-hidden />
             Pekerjaan baru
           </Button>
+          {/* Menu ⋯ — arsip & aksi sekunder tanpa menambah tab utama */}
+          <DropdownRoot>
+            <DropdownTrigger asChild>
+              <Button variant="outline" size="icon" className="size-9" aria-label="Menu lainnya">
+                <MoreHorizontal className="size-4" aria-hidden />
+              </Button>
+            </DropdownTrigger>
+            <DropdownContent className="w-60">
+              <DropdownItem icon={<Archive />} onSelect={() => setArchiveOpen(true)}>
+                Pekerjaan diarsipkan ({archivedTasks.length})
+              </DropdownItem>
+              <DropdownSeparator />
+              <DropdownItem
+                icon={<Filter />}
+                onSelect={() => {
+                  setFilters(EMPTY_FILTERS);
+                  setSearch('');
+                }}
+              >
+                Bersihkan semua filter
+              </DropdownItem>
+            </DropdownContent>
+          </DropdownRoot>
         </div>
+      </div>
+
+      {/* Indikator cepat — dapat diklik untuk memfilter Board (§I) */}
+      <div role="group" aria-label="Indikator cepat" className="flex flex-wrap items-center gap-2">
+        {(
+          [
+            { key: 'TERLAMBAT', icon: AlertTriangle, tone: 'danger' },
+            { key: 'MENDEKATI_TENGGAT', icon: CalendarClock, tone: 'warning' },
+            { key: 'TERHAMBAT', icon: OctagonAlert, tone: 'warning' },
+            { key: 'TANPA_PIC', icon: UserRoundX, tone: 'neutral' },
+          ] as Array<{ key: QuickFilterKey; icon: LucideIcon; tone: 'danger' | 'warning' | 'neutral' }>
+        ).map(({ key, icon: Icon, tone }) => {
+          const active = filters.quick === key;
+          const count = quickCounts[key];
+          return (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => toggleQuick(key)}
+              className={cn(
+                'pressable inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm font-semibold transition-colors',
+                active
+                  ? 'border-brand-400 bg-brand-50 text-brand-800'
+                  : count === 0
+                    ? 'border-slate-200 text-slate-400 hover:border-slate-300'
+                    : tone === 'danger'
+                      ? 'border-danger-100 bg-danger-50/60 text-danger-700 hover:border-danger-300'
+                      : tone === 'warning'
+                        ? 'border-amber-100 bg-amber-50/60 text-amber-800 hover:border-amber-300'
+                        : 'border-slate-200 text-slate-600 hover:border-brand-200 hover:text-brand-700',
+              )}
+            >
+              <Icon className="size-4" aria-hidden />
+              {QUICK_FILTER_LABEL[key]}
+              <span className="tnum rounded-full bg-white/70 px-1.5 text-xs font-bold">{count}</span>
+            </button>
+          );
+        })}
+        {filters.quick && (
+          <Button variant="ghost" size="sm" onClick={() => setFilters((f) => ({ ...f, quick: null }))}>
+            <X className="size-3.5" aria-hidden />
+            Hapus indikator
+          </Button>
+        )}
       </div>
 
       {/* Chip filter step dari Dashboard */}
@@ -460,17 +599,6 @@ export default function BoardPage() {
             <Skeleton key={i} className="h-96 w-72 shrink-0 rounded-2xl" />
           ))}
         </div>
-      ) : view === 'ringkasan' ? (
-        <BoardSummary steps={steps} tasks={tasks} employees={employees} />
-      ) : view === 'arsip' ? (
-        <Card>
-          <ArchiveList
-            tasks={tasks}
-            employees={employees}
-            categories={categories}
-            onOpenTask={setOpenTaskId}
-          />
-        </Card>
       ) : (
         <KanbanBoard
           steps={visibleSteps}
@@ -529,6 +657,25 @@ export default function BoardPage() {
         }}
         onDelete={setDeleteTaskTarget}
       />
+      {/* Arsip: modal, bukan tab utama. Data & fungsi arsip tetap utuh. */}
+      <Modal
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        title="Pekerjaan diarsipkan"
+        description="Pekerjaan yang disembunyikan dari Board aktif — riwayatnya tetap tersimpan."
+        size="xl"
+      >
+        <ArchiveList
+          tasks={allTasks}
+          employees={employees}
+          categories={categories}
+          onOpenTask={(id) => {
+            setArchiveOpen(false);
+            setOpenTaskId(id);
+          }}
+        />
+      </Modal>
+
       <StepDialog open={stepDialogOpen} onOpenChange={setStepDialogOpen} step={stepDialogStep} />
       <DeleteStepDialog
         open={!!deleteStepTarget}

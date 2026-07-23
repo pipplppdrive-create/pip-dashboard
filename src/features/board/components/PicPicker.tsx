@@ -17,6 +17,8 @@ interface PicPickerProps {
   placeholder?: string;
   /** Pegawai yang disembunyikan dari daftar (mis. sudah dipilih di picker lain). */
   excludeIds?: string[];
+  /** Nonaktifkan pemilihan (mis. Staf tidak boleh mengubah PIC utama). */
+  disabled?: boolean;
   id?: string;
   'aria-describedby'?: string;
   'aria-invalid'?: boolean;
@@ -35,6 +37,7 @@ export function PicPicker({
   onChange,
   placeholder = 'Pilih pegawai…',
   excludeIds = [],
+  disabled = false,
   ...aria
 }: PicPickerProps) {
   const [search, setSearch] = useState('');
@@ -79,9 +82,13 @@ export function PicPicker({
           <button
             type="button"
             {...aria}
+            disabled={disabled}
+            aria-disabled={disabled || undefined}
             className={cn(
-              'pressable flex min-h-10 w-full cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-left text-sm shadow-sm transition-colors',
-              'hover:border-slate-400 focus:border-brand-500',
+              'pressable flex min-h-10 w-full items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-left text-sm shadow-sm transition-colors',
+              disabled
+                ? 'cursor-not-allowed bg-slate-50 opacity-70'
+                : 'cursor-pointer hover:border-slate-400 focus:border-brand-500',
               aria['aria-invalid'] && 'border-danger-500',
             )}
           >

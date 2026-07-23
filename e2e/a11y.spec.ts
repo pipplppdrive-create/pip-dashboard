@@ -66,7 +66,7 @@ test.describe('aksesibilitas', () => {
 
   test('ringkasan pekerjaan & daftar pegawai', async ({ page }) => {
     await loginAsAdmin(page);
-    for (const path of ['/pekerjaan?view=ringkasan', '/daftar-pegawai']) {
+    for (const path of ['/pekerjaan?scope=mine', '/daftar-pegawai']) {
       await page.goto(path);
       await page.waitForLoadState('networkidle');
       await expectNoSeriousViolations(page, path);

@@ -65,7 +65,23 @@ export async function GET(request: Request): Promise<Response> {
   }
   try {
     const runs = await syncAllActive(env);
-    return json({ ok: true, runs: runs.length });
+    // Notifikasi tenggat (mendekati tenggat / terlambat) — idempotent per hari.
+    let dueNotifications = 0;
+    try {
+      const res = await fetch(`${env.supabaseUrl}/rest/v1/rpc/generate_due_notifications`, {
+        method: 'POST',
+        headers: {
+          apikey: env.serviceRoleKey,
+          Authorization: `Bearer ${env.serviceRoleKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) dueNotifications = Number(await res.text()) || 0;
+    } catch {
+      // Notifikasi tenggat tidak boleh menggagalkan sinkronisasi terjadwal.
+    }
+    return json({ ok: true, runs: runs.length, dueNotifications });
   } catch (err) {
     console.error('[sync/cron]', err instanceof Error ? err.message : err);
     return fail('Rekonsiliasi terjadwal gagal.', 500);

@@ -1,5 +1,5 @@
 ﻿import { expect, test, type Page } from '@playwright/test';
-import { loginAsUser } from './helpers';
+import { loginAsAdmin } from './helpers';
 
 function column(page: Page, stepName: string) {
   return page.getByRole('region', { name: `Step ${stepName}`, exact: true });
@@ -7,7 +7,7 @@ function column(page: Page, stepName: string) {
 
 test.describe('board pekerjaan', () => {
   test('board kanban tampil dengan step dan kartu seed', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await expect(page.getByText('Board Pekerjaan Tim PIP')).toBeVisible();
     for (const name of ['Will Do', 'To Do', 'On Progress', 'Blocking', 'Done']) {
@@ -20,7 +20,7 @@ test.describe('board pekerjaan', () => {
 
   test('judul board dapat diubah', async ({ page }) => {
     test.skip(true, 'Di luar cakupan E2E tahap deploy awal.');
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await page.getByRole('button', { name: 'Ubah judul board' }).click();
     await page.getByRole('textbox', { name: 'Judul board' }).fill('Board PIP 2026');
@@ -32,7 +32,7 @@ test.describe('board pekerjaan', () => {
   });
 
   test('membuat pekerjaan baru (multi-PIC) dan tampil di step tujuan', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await page.getByRole('button', { name: 'Pekerjaan baru' }).click();
     const dialog = page.getByRole('dialog', { name: 'Pekerjaan Baru' });
@@ -55,7 +55,7 @@ test.describe('board pekerjaan', () => {
   });
 
   test('detail: checklist memengaruhi progres otomatis', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'On Progress')
       .getByText('Finalisasi SK Pemberian PIP Termin 2')
@@ -69,7 +69,7 @@ test.describe('board pekerjaan', () => {
   });
 
   test('detail: komentar, kendala, dan tindak lanjut tercatat', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'To Do').getByText('Verifikasi usulan penerima tahap susulan').click();
     const dialog = page.getByRole('dialog', { name: /Verifikasi usulan/ });
@@ -85,7 +85,7 @@ test.describe('board pekerjaan', () => {
   });
 
   test('kartu dapat difokuskan dan dipindahkan antar step lewat detail', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     const card = column(page, 'Will Do').getByRole('button', {
       name: 'Buka pekerjaan Permintaan data penyaluran dari Komisi X DPR RI',
@@ -107,7 +107,7 @@ test.describe('board pekerjaan', () => {
   });
 
   test('detail: pindah step lewat select (akses keyboard)', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'Will Do').getByText('Penyusunan juknis pencairan kolektif').click();
     const dialog = page.getByRole('dialog', { name: /Penyusunan juknis/ });
@@ -121,7 +121,7 @@ test.describe('board pekerjaan', () => {
 
   test('step: tambah, ubah nama, dan hapus step kosong', async ({ page }) => {
     test.skip(true, 'Di luar cakupan E2E tahap deploy awal.');
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     // Tambah
     await page.getByRole('button', { name: 'Tambah step' }).click();
@@ -147,7 +147,7 @@ test.describe('board pekerjaan', () => {
 
   test('pengamanan: step berisi kartu wajib pindahkan kartu dulu', async ({ page }) => {
     test.skip(true, 'Di luar cakupan E2E tahap deploy awal.');
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     // Pastikan kartu seed pada step Blocking sudah tampil
     await expect(
@@ -167,30 +167,58 @@ test.describe('board pekerjaan', () => {
     ).toBeVisible();
   });
 
-  test('arsip: arsipkan dari detail, tampil di tab Arsip, pulihkan', async ({ page }) => {
-    await loginAsUser(page);
+  test('arsip: arsipkan dari detail, buka lewat menu ⋯, lalu pulihkan', async ({ page }) => {
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'Done').getByText('Rapat koordinasi teknis dengan bank penyalur').click();
     const dialog = page.getByRole('dialog', { name: /Rapat koordinasi teknis/ });
     await dialog.getByRole('button', { name: 'Arsipkan' }).click();
     await expect(page.getByText('Pekerjaan diarsipkan.')).toBeVisible();
-    // Tab arsip
-    await page.getByRole('button', { name: /Arsip/ }).click();
-    const row = page.getByText('Rapat koordinasi teknis dengan bank penyalur');
-    await expect(row).toBeVisible();
-    await page
+
+    // Arsip BUKAN tab utama — dibuka lewat menu ⋯.
+    await page.getByRole('button', { name: 'Menu lainnya' }).click();
+    await page.getByRole('menuitem', { name: /Pekerjaan diarsipkan/ }).click();
+    const modal = page.getByRole('dialog', { name: 'Pekerjaan diarsipkan' });
+    await expect(modal.getByText('Rapat koordinasi teknis dengan bank penyalur')).toBeVisible();
+    await modal
       .locator('li', { hasText: 'Rapat koordinasi teknis' })
       .getByRole('button', { name: 'Pulihkan' })
       .click();
     await expect(page.getByText('Dipulihkan dari arsip.')).toBeVisible();
-    await page.getByRole('button', { name: 'Board', exact: true }).click();
+    await page.keyboard.press('Escape');
     await expect(
       column(page, 'Done').getByText('Rapat koordinasi teknis dengan bank penyalur'),
     ).toBeVisible();
   });
 
+  test('halaman Pekerjaan tidak lagi memiliki tab Ringkasan / Arsip / Review', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/pekerjaan');
+    const cakupan = page.getByRole('group', { name: 'Cakupan pekerjaan' });
+    await expect(cakupan.getByRole('button', { name: 'Semua Pekerjaan' })).toBeVisible();
+    await expect(cakupan.getByRole('button', { name: 'Pekerjaan Saya' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ringkasan', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^Arsip \(/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Menunggu Review/ })).toHaveCount(0);
+    // Indikator cepat menggantikan card ringkasan per step.
+    const indikator = page.getByRole('group', { name: 'Indikator cepat' });
+    await expect(indikator.getByRole('button', { name: /Terlambat/ })).toBeVisible();
+    await expect(indikator.getByRole('button', { name: /Tanpa PIC/ })).toBeVisible();
+  });
+
+  test('Pekerjaan Saya memakai record yang sama dengan Semua Pekerjaan', async ({ page }) => {
+    await loginAsAdmin(page);
+    await page.goto('/pekerjaan?scope=mine');
+    await expect(page).toHaveURL(/scope=mine/);
+    // Board & step yang sama (bukan board terpisah per pegawai).
+    await expect(page.getByText('Board Pekerjaan Tim PIP')).toBeVisible();
+    await page.getByRole('button', { name: 'Semua Pekerjaan' }).click();
+    await expect(page).not.toHaveURL(/scope=mine/);
+    await expect(page.getByText('Board Pekerjaan Tim PIP')).toBeVisible();
+  });
+
   test('search memfilter kartu', async ({ page }) => {
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await page.getByLabel('Cari pekerjaan').fill('Rekonsiliasi');
     await expect(
@@ -203,7 +231,7 @@ test.describe('board pekerjaan', () => {
 
   test('hapus pekerjaan (soft delete) dengan alasan', async ({ page }) => {
     test.skip(true, 'Di luar cakupan E2E tahap deploy awal.');
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'To Do').getByText('Monitoring pengaduan layanan PIP minggu ke-29').click();
     const dialog = page.getByRole('dialog', { name: /Monitoring pengaduan/ });
@@ -219,7 +247,7 @@ test.describe('board pekerjaan', () => {
 
   test('lampiran: unggah txt berhasil, executable ditolak', async ({ page }) => {
     test.skip(true, 'Di luar cakupan E2E tahap deploy awal.');
-    await loginAsUser(page);
+    await loginAsAdmin(page);
     await page.goto('/pekerjaan');
     await column(page, 'On Progress').getByText('Aktivasi rekening siswa SMA wilayah timur').click();
     const dialog = page.getByRole('dialog', { name: /Aktivasi rekening/ });
@@ -245,10 +273,10 @@ test.describe('board pekerjaan', () => {
     const context1 = await browser.newContext();
     const context2 = await browser.newContext();
     const page1 = await context1.newPage();
-    await loginAsUser(page1);
+    await loginAsAdmin(page1);
     await page1.goto('/pekerjaan');
     const page2 = await context2.newPage();
-    await loginAsUser(page2);
+    await loginAsAdmin(page2);
     await page2.goto('/pekerjaan');
     await expect(page2.getByText('Board Pekerjaan Tim PIP')).toBeVisible();
     // Tab 2 di depan agar tidak terkena throttling tab background headless;

@@ -21,17 +21,20 @@ import {
 import { validateRows, validateScope } from '@/services/distribution-validation';
 import { readCollection, writeCollection } from '@/services/local/storage';
 import type {
+  AccountType,
   ActorContext,
   AppSettings,
+  AttachmentGroup,
   AuditEntry,
   AuthState,
   BackupPayload,
   ChangeEvent,
   ChangeTopic,
   DataService,
+  EmployeeAccount,
   GoogleConnectionStatus,
+  NotificationItem,
   PipSkRecord,
-  Role,
   SessionInfo,
   Step,
   Task,
@@ -42,6 +45,8 @@ import { authEmailDomain, getSupabase } from './client';
 import {
   toActivity,
   toAttachment,
+  toAttachmentGroup,
+  toNotification,
   toAudit,
   toBinding,
   toBoard,
@@ -58,8 +63,10 @@ import {
   toTaxonomy,
   toTemplate,
   type ActivityRow,
+  type AttachmentGroupRow,
   type AttachmentRow,
   type AuditRow,
+  type NotificationRow,
   type BindingRow,
   type BoardRow,
   type CommentRow,
@@ -104,9 +111,18 @@ function wrap(err: PgError | null, fallback: string): never {
   throw new AppError('UNAVAILABLE', `${fallback}: ${msg}`);
 }
 
-let cachedRole: { userId: string; role: Role; account: string } | null = null;
+interface AccountInfo {
+  userId: string;
+  role: AccountType;
+  account: string;
+  /** Pegawai yang terhubung ke akun (hanya akun EMPLOYEE). */
+  employeeId: string | null;
+  mustChangePassword: boolean;
+}
 
-async function fetchRole(): Promise<{ userId: string; role: Role; account: string } | null> {
+let cachedRole: AccountInfo | null = null;
+
+async function fetchRole(): Promise<AccountInfo | null> {
   const sb = getSupabase();
   const { data: authData } = await sb.auth.getUser();
   const user = authData.user;
@@ -116,21 +132,44 @@ async function fetchRole(): Promise<{ userId: string; role: Role; account: strin
   }
   const { data, error } = await sb
     .from('account_roles')
-    .select('role, account_label')
+    .select('role, account_label, employee_id, is_active, must_change_password')
     .eq('user_id', user.id)
     .maybeSingle();
   if (error || !data) return null;
-  cachedRole = { userId: user.id, role: data.role as Role, account: data.account_label as string };
+  const row = data as {
+    role: AccountType;
+    account_label: string;
+    employee_id: string | null;
+    is_active: boolean;
+    must_change_password: boolean;
+  };
+  if (!row.is_active) return null;
+  cachedRole = {
+    userId: user.id,
+    role: row.role,
+    account: row.account_label,
+    employeeId: row.employee_id,
+    mustChangePassword: row.must_change_password,
+  };
   return cachedRole;
 }
 
-async function requireRole(): Promise<{ userId: string; role: Role; account: string }> {
+/** Akun DEMO tidak boleh melakukan perubahan apa pun. */
+async function requireWrite(): Promise<AccountInfo> {
+  const info = await requireRole();
+  if (info.role === 'DEMO') {
+    throw new ForbiddenError('Akun demo hanya dapat melihat data (read-only).');
+  }
+  return info;
+}
+
+async function requireRole(): Promise<AccountInfo> {
   const info = await fetchRole();
   if (!info) throw new AuthError('Sesi Anda berakhir. Silakan masuk kembali.');
   return info;
 }
 
-async function requireAdmin(): Promise<{ userId: string; role: Role; account: string }> {
+async function requireAdmin(): Promise<AccountInfo> {
   const info = await requireRole();
   if (info.role !== 'ADMIN') {
     throw new ForbiddenError('Tindakan ini hanya dapat dilakukan Admin.');
@@ -286,7 +325,32 @@ async function callServerApi<T>(
   }
 }
 
-async function createDeviceSession(role: Role, account: string): Promise<SessionInfo> {
+/**
+ * Kirim FormData lampiran ke endpoint server dengan token sesi Supabase.
+ * Endpoint memeriksa ulang hak akses pekerjaan (tidak hanya mengandalkan RLS).
+ */
+async function postAttachmentForm(form: FormData): Promise<void> {
+  const { data: sess } = await getSupabase().auth.getSession();
+  const token = sess.session?.access_token;
+  const res = await fetch('/api/attachments', {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  }).catch(() => null);
+  if (!res) throw new StorageError('Server lampiran tidak dapat dihubungi.');
+  const payload = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) {
+    if (res.status === 403) throw new ForbiddenError(payload.error);
+    throw new StorageError(payload.error ?? 'Gagal memproses lampiran.');
+  }
+}
+
+async function postAttachmentJson(body: Record<string, unknown>): Promise<void> {
+  const res = await callServerApi('POST', '/api/attachments', body);
+  if (!res.ok) throw new StorageError(res.message ?? 'Gagal memproses lampiran.');
+}
+
+async function createDeviceSession(role: AccountType, account: string): Promise<SessionInfo> {
   const sb = getSupabase();
   const { data: authData } = await sb.auth.getUser();
   const { data, error } = await sb
@@ -315,12 +379,19 @@ export const supabaseAdapter: DataService = {
   auth: {
     async getState(): Promise<AuthState> {
       const sb = getSupabase();
+      const empty: AuthState = {
+        session: null,
+        role: null,
+        employeeId: null,
+        mustChangePassword: false,
+      };
       const { data } = await sb.auth.getSession();
-      if (!data.session) return { session: null, role: null };
+      if (!data.session) return empty;
+      cachedRole = null;
       const info = await fetchRole();
       if (!info) {
         await sb.auth.signOut();
-        return { session: null, role: null };
+        return empty;
       }
       const sessionId = readCollection<string | null>(SESSION_KEY, null);
       let session: SessionInfo | null = null;
@@ -339,48 +410,94 @@ export const supabaseAdapter: DataService = {
         writeCollection(SESSION_KEY, null);
         await sb.auth.signOut();
         cachedRole = null;
-        return { session: null, role: null };
+        return empty;
       }
       // Heartbeat (throttle 5 menit)
       if (Date.now() - Date.parse(session.lastActiveAt) > 5 * 60_000) {
         await sb.from('device_sessions').update({ last_active_at: nowISO() }).eq('id', session.id);
       }
-      return { session, role: info.role };
+      return {
+        session,
+        role: info.role,
+        employeeId: info.employeeId,
+        mustChangePassword: info.mustChangePassword,
+      };
     },
 
     /**
-     * Login terpadu — username dipetakan ke email Supabase Auth pada domain
-     * internal; role (USER/ADMIN) dibaca dari account_roles SETELAH kredensial
-     * terverifikasi. Role tidak pernah dipercaya dari frontend.
+     * Login dengan NIP, username pegawai, atau nama akun sistem.
+     *
+     * Pemetaan identitas → akun Supabase Auth dilakukan SERVER-SIDE
+     * (`/api/auth/login`) sehingga email internal Auth dan service role key
+     * tidak pernah sampai ke frontend. Jenis akun dibaca dari database setelah
+     * kredensial terverifikasi — tidak pernah dipercaya dari frontend.
      */
-    async login(username: string, password: string): Promise<SessionInfo> {
+    async login(identifier: string, password: string): Promise<SessionInfo> {
       const sb = getSupabase();
-      const uname = username.trim();
-      if (!uname) throw new AuthError('Masukkan username Anda.');
-      const email = uname.includes('@') ? uname : `${uname}@${authEmailDomain()}`;
-      const { error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) {
-        throw new AuthError(
-          error.message.includes('rate')
-            ? 'Terlalu banyak percobaan. Coba lagi nanti.'
-            : 'Username atau password salah. Periksa kembali.',
-        );
+      const raw = identifier.trim();
+      if (!raw) throw new AuthError('Masukkan NIP atau username Anda.');
+
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: raw, password }),
+      }).catch(() => null);
+
+      if (res && res.status !== 404) {
+        const payload = (await res.json().catch(() => ({}))) as {
+          accessToken?: string;
+          refreshToken?: string;
+          error?: string;
+        };
+        if (!res.ok || !payload.accessToken || !payload.refreshToken) {
+          throw new AuthError(payload.error ?? 'NIP/username atau password salah.');
+        }
+        const { error } = await sb.auth.setSession({
+          access_token: payload.accessToken,
+          refresh_token: payload.refreshToken,
+        });
+        if (error) throw new AuthError('Gagal memulai sesi. Coba lagi.');
+      } else {
+        // Cadangan (mis. pengembangan tanpa endpoint server): login akun sistem
+        // memakai domain email internal. Login NIP/username butuh endpoint.
+        const email = raw.includes('@') ? raw : `${raw}@${authEmailDomain()}`;
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw new AuthError('NIP/username atau password salah. Periksa kembali.');
       }
+
       cachedRole = null;
       const info = await fetchRole();
       if (!info) {
         await sb.auth.signOut();
-        throw new AuthError(
-          'Akun ini belum terdaftar pada aplikasi (account_roles kosong). Hubungi Admin.',
-        );
+        throw new AuthError('Akun Anda belum aktif pada aplikasi. Hubungi Admin.');
       }
       const session = await createDeviceSession(info.role, info.account);
       await auditWrite({
         action: 'LOGIN',
         entityType: 'AUTH',
-        entityLabel: info.role === 'ADMIN' ? 'Login Admin' : 'Login Tim PIP',
+        entityLabel: `Login ${info.role}`,
+        employeeId: info.employeeId,
       });
       return session;
+    },
+
+    /** Ganti password sendiri lewat endpoint server (Supabase Auth). */
+    async changeOwnPassword(newPassword: string, currentPassword?: string): Promise<void> {
+      await requireRole();
+      const { data: sess } = await getSupabase().auth.getSession();
+      const token = sess.session?.access_token;
+      const res = await fetch('/api/auth/password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ newPassword, currentPassword }),
+      }).catch(() => null);
+      if (!res) throw new AppError('UNAVAILABLE', 'Server tidak dapat dihubungi.');
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new ValidationError(payload.error ?? 'Gagal mengganti password.');
+      cachedRole = null;
     },
 
     async logout(): Promise<void> {
@@ -422,6 +539,133 @@ export const supabaseAdapter: DataService = {
     },
   },
 
+  // -------------------------------------------------------------- accounts
+  // Seluruh operasi berjalan lewat endpoint server (service role); frontend
+  // tidak pernah menyentuh Auth Admin API maupun email internal.
+  accounts: {
+    async list(): Promise<EmployeeAccount[]> {
+      await requireAdmin();
+      const res = await callServerApi<{ accounts: EmployeeAccount[] }>(
+        'POST',
+        '/api/admin/accounts',
+        { action: 'list' },
+      );
+      if (!res.ok) throw new AppError('UNAVAILABLE', res.message ?? 'Gagal memuat daftar akun.');
+      return res.data?.accounts ?? [];
+    },
+
+    async provision(employeeId): Promise<EmployeeAccount> {
+      await requireAdmin();
+      const res = await callServerApi<{ account: EmployeeAccount | null }>(
+        'POST',
+        '/api/admin/accounts',
+        { action: 'provision', employeeId },
+      );
+      if (!res.ok) throw new ValidationError(res.message ?? 'Gagal membuat akun pegawai.');
+      await auditWrite({
+        action: 'ACCOUNT_CREATE',
+        entityType: 'ACCOUNT',
+        entityId: employeeId,
+        entityLabel: 'Akun pegawai dibuat',
+      });
+      return (
+        res.data?.account ?? {
+          employeeId,
+          hasAccount: true,
+          accountType: 'EMPLOYEE',
+          isActive: true,
+          mustChangePassword: true,
+          lastLoginAt: null,
+          passwordChangedAt: null,
+          createdAt: nowISO(),
+        }
+      );
+    },
+
+    async provisionAll() {
+      await requireAdmin();
+      const res = await callServerApi<{ created: number; skipped: number; failed: string[] }>(
+        'POST',
+        '/api/admin/accounts',
+        { action: 'provisionAll' },
+      );
+      if (!res.ok) throw new ValidationError(res.message ?? 'Gagal membuat akun pegawai.');
+      return res.data ?? { created: 0, skipped: 0, failed: [] };
+    },
+
+    async resetPassword(employeeId) {
+      await requireAdmin();
+      const res = await callServerApi('POST', '/api/admin/accounts', {
+        action: 'resetPassword',
+        employeeId,
+      });
+      if (!res.ok) throw new ValidationError(res.message ?? 'Gagal mereset password.');
+    },
+
+    async setActive(employeeId, active) {
+      await requireAdmin();
+      const res = await callServerApi('POST', '/api/admin/accounts', {
+        action: 'setActive',
+        employeeId,
+        active,
+      });
+      if (!res.ok) throw new ValidationError(res.message ?? 'Gagal mengubah status akun.');
+    },
+  },
+
+  // ---------------------------------------------------------- notifications
+  // RLS memastikan pengguna hanya membaca & menandai notifikasi MILIKNYA.
+  notifications: {
+    async list(opts): Promise<NotificationItem[]> {
+      const info = await requireRole();
+      if (!info.employeeId) return [];
+      let q = getSupabase()
+        .from('notifications')
+        .select()
+        .eq('recipient_employee_id', info.employeeId)
+        .order('created_at', { ascending: false })
+        .limit(opts?.limit ?? 30);
+      if (opts?.unreadOnly) q = q.is('read_at', null);
+      const { data, error } = await q;
+      if (error) return [];
+      return ((data ?? []) as NotificationRow[]).map(toNotification);
+    },
+
+    async unreadCount(): Promise<number> {
+      const info = await requireRole();
+      if (!info.employeeId) return 0;
+      const { count, error } = await getSupabase()
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_employee_id', info.employeeId)
+        .is('read_at', null);
+      if (error) return 0;
+      return count ?? 0;
+    },
+
+    async markRead(id) {
+      const info = await requireRole();
+      if (!info.employeeId) return;
+      const { error } = await getSupabase()
+        .from('notifications')
+        .update({ read_at: nowISO() })
+        .eq('id', id)
+        .eq('recipient_employee_id', info.employeeId);
+      if (error) wrap(error, 'Gagal menandai notifikasi');
+    },
+
+    async markAllRead() {
+      const info = await requireRole();
+      if (!info.employeeId) return;
+      const { error } = await getSupabase()
+        .from('notifications')
+        .update({ read_at: nowISO() })
+        .eq('recipient_employee_id', info.employeeId)
+        .is('read_at', null);
+      if (error) wrap(error, 'Gagal menandai notifikasi');
+    },
+  },
+
   // ------------------------------------------------------------- employees
   employees: {
     async list(opts) {
@@ -443,8 +687,11 @@ export const supabaseAdapter: DataService = {
           initials: input.initials.trim().toUpperCase(),
           color: input.color,
           nip: input.nip?.trim() || null,
+          username: input.username?.trim().toLowerCase() || null,
           position: input.position.trim(),
           team: input.team.trim(),
+          level: input.level ?? 'STAFF',
+          supervisor_id: input.supervisorId ?? null,
           sort_order: input.sortOrder ?? 999,
           active: input.active ?? true,
         })
@@ -471,8 +718,13 @@ export const supabaseAdapter: DataService = {
       if (patch.initials !== undefined) row.initials = patch.initials.trim().toUpperCase();
       if (patch.color !== undefined) row.color = patch.color;
       if (patch.nip !== undefined) row.nip = patch.nip?.trim() || null;
+      if (patch.username !== undefined) {
+        row.username = patch.username?.trim().toLowerCase() || null;
+      }
       if (patch.position !== undefined) row.position = patch.position.trim();
       if (patch.team !== undefined) row.team = patch.team.trim();
+      if (patch.level !== undefined) row.level = patch.level;
+      if (patch.supervisorId !== undefined) row.supervisor_id = patch.supervisorId || null;
       if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder;
       if (patch.active !== undefined) row.active = patch.active;
       const { data, error } = await getSupabase()
@@ -512,7 +764,12 @@ export const supabaseAdapter: DataService = {
       });
     },
     async setPhoto(id, photo, ctx) {
-      await requireAdmin();
+      // Admin bebas; pegawai hanya boleh mengganti fotonya sendiri (RLS + trigger
+      // employees_guard_self_update menegakkan hal yang sama di server).
+      const info = await requireWrite();
+      if (info.role !== 'ADMIN' && info.employeeId !== id) {
+        throw new ForbiddenError('Anda hanya dapat mengganti foto profil Anda sendiri.');
+      }
       const employeeId = await assertActor(ctx);
       if (photo.size <= 0) throw new ValidationError('Berkas foto kosong.');
       if (photo.size > 300 * 1024) {
@@ -565,7 +822,10 @@ export const supabaseAdapter: DataService = {
       return emp;
     },
     async removePhoto(id, ctx) {
-      await requireAdmin();
+      const info = await requireWrite();
+      if (info.role !== 'ADMIN' && info.employeeId !== id) {
+        throw new ForbiddenError('Anda hanya dapat menghapus foto profil Anda sendiri.');
+      }
       const employeeId = await assertActor(ctx);
       const sb = getSupabase();
       const { data: prevRow, error: prevErr } = await sb
@@ -786,10 +1046,13 @@ export const supabaseAdapter: DataService = {
       return toTask(data as TaskRow);
     },
     async create(input, ctx) {
-      await requireRole();
+      const info = await requireWrite();
       const employeeId = await assertActor(ctx);
       const title = input.title.trim();
       if (!title) throw new ValidationError('Judul pekerjaan tidak boleh kosong.');
+      // Pemilik pekerjaan = pembuat. Staf hanya boleh membuat pekerjaan mandiri
+      // untuk dirinya; aturan ini ditegakkan ulang oleh RLS (policy tasks insert).
+      const taskType = input.taskType ?? 'MANDIRI';
       const { data, error } = await getSupabase()
         .from('tasks')
         .insert({
@@ -818,23 +1081,33 @@ export const supabaseAdapter: DataService = {
           sort_order: 9999,
           created_by_employee_id: employeeId,
           updated_by_employee_id: employeeId,
+          owner_employee_id: employeeId,
+          task_type: taskType,
+          disposed_by_employee_id: taskType === 'DISPOSISI' ? employeeId : null,
         })
         .select()
         .single();
       if (error || !data) wrap(error, 'Gagal membuat pekerjaan');
       const task = toTask(data as TaskRow);
       await auditWrite({
-        action: 'CREATE',
+        action: taskType === 'DISPOSISI' ? 'DISPOSE' : 'CREATE',
         entityType: 'TASK',
         entityId: task.id,
         entityLabel: title,
         employeeId,
-        after: { stepId: task.stepId, priority: task.priority },
+        after: {
+          stepId: task.stepId,
+          priority: task.priority,
+          taskType,
+          picMainIds: task.picMainIds,
+          memberIds: task.picIds,
+          accountType: info.role,
+        },
       });
       return task;
     },
     async update(id, patch: TaskPatch, expectedVersion, ctx) {
-      await requireRole();
+      await requireWrite();
       const employeeId = await assertActor(ctx);
       const row: Record<string, unknown> = {
         updated_at: nowISO(),
@@ -862,6 +1135,8 @@ export const supabaseAdapter: DataService = {
       }
       if (patch.checklist !== undefined) row.checklist = patch.checklist;
       if (patch.isFocus !== undefined) row.is_focus = patch.isFocus;
+      if (patch.ownerEmployeeId !== undefined) row.owner_employee_id = patch.ownerEmployeeId;
+      if (patch.taskType !== undefined) row.task_type = patch.taskType;
       const { data, error } = await getSupabase()
         .from('tasks')
         .update(row)
@@ -1119,6 +1394,111 @@ export const supabaseAdapter: DataService = {
         entityLabel: `Lampiran "${row.file_name}" dihapus`,
         employeeId,
       });
+    },
+
+    // ------- Lampiran berkelompok + riwayat versi (Drive / Supabase Storage) --
+    // Unggah & penghapusan berkas SELALU lewat endpoint server: token Google
+    // dan service role tidak pernah tersedia di frontend.
+    async listGroups(taskId, opts) {
+      await requireRole();
+      let q = getSupabase()
+        .from('attachment_groups')
+        .select('*, attachment_versions(*)')
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true });
+      if (!opts?.includeDeleted) q = q.is('deleted_at', null);
+      const { data, error } = await q;
+      if (error) wrap(error, 'Gagal memuat lampiran');
+      const groups = ((data ?? []) as AttachmentGroupRow[]).map(toAttachmentGroup);
+      return opts?.includeDeleted
+        ? groups
+        : groups.map((g) => ({ ...g, versions: g.versions.filter((v) => !v.deletedAt) }));
+    },
+
+    async countsByTask(): Promise<Record<string, number>> {
+      await requireRole();
+      const { data, error } = await getSupabase()
+        .from('attachment_groups')
+        .select('task_id')
+        .is('deleted_at', null);
+      if (error) return {};
+      const counts: Record<string, number> = {};
+      for (const row of (data ?? []) as { task_id: string }[]) {
+        counts[row.task_id] = (counts[row.task_id] ?? 0) + 1;
+      }
+      return counts;
+    },
+
+    async createGroup(taskId, input, ctx): Promise<AttachmentGroup> {
+      await requireWrite();
+      await assertActor(ctx);
+      const title = input.title.trim();
+      if (!title) throw new ValidationError('Judul lampiran wajib diisi.');
+      const form = new FormData();
+      form.set('action', 'createGroup');
+      form.set('taskId', taskId);
+      form.set('title', title);
+      form.set('changeNote', input.changeNote ?? '');
+      form.set('file', input.file, input.file.name);
+      await postAttachmentForm(form);
+      const groups = await supabaseAdapter.attachments.listGroups(taskId);
+      const created = groups.find((g) => g.title === title) ?? groups[groups.length - 1];
+      if (!created) throw new StorageError('Lampiran tersimpan tetapi gagal dimuat ulang.');
+      return created;
+    },
+
+    async addVersion(groupId, input, ctx): Promise<AttachmentGroup> {
+      await requireWrite();
+      await assertActor(ctx);
+      const form = new FormData();
+      form.set('action', 'addVersion');
+      form.set('groupId', groupId);
+      form.set('changeNote', input.changeNote ?? '');
+      form.set('file', input.file, input.file.name);
+      await postAttachmentForm(form);
+      const { data } = await getSupabase()
+        .from('attachment_groups')
+        .select('*, attachment_versions(*)')
+        .eq('id', groupId)
+        .maybeSingle();
+      if (!data) throw new NotFoundError('Lampiran tidak ditemukan.');
+      return toAttachmentGroup(data as AttachmentGroupRow);
+    },
+
+    async versionDownloadUrl(versionId) {
+      await requireRole();
+      // Unduhan diproksikan server (URL berkas asli tidak pernah dibagikan).
+      return `/api/attachments/download?versionId=${encodeURIComponent(versionId)}`;
+    },
+
+    async softDeleteVersion(versionId, ctx) {
+      await requireWrite();
+      await assertActor(ctx);
+      await postAttachmentJson({ action: 'softDeleteVersion', versionId, confirmLast: 'true' });
+    },
+
+    async restoreVersion(versionId, ctx) {
+      await requireWrite();
+      await assertActor(ctx);
+      await postAttachmentJson({ action: 'restoreVersion', versionId });
+    },
+
+    async softDeleteGroup(groupId, ctx) {
+      await requireWrite();
+      await assertActor(ctx);
+      await postAttachmentJson({ action: 'softDeleteGroup', groupId });
+    },
+
+    async restoreGroup(groupId, ctx) {
+      await requireWrite();
+      await assertActor(ctx);
+      await postAttachmentJson({ action: 'restoreGroup', groupId });
+    },
+
+    async permanentDeleteGroup(groupId, ctx) {
+      await requireAdmin();
+      await assertActor(ctx);
+      await postAttachmentJson({ action: 'permanentDeleteGroup', groupId });
     },
   },
 
@@ -1951,6 +2331,10 @@ export const supabaseAdapter: DataService = {
         tasks: 'tasks',
         task_comments: 'comments',
         attachments: 'attachments',
+        attachment_groups: 'attachments',
+        attachment_versions: 'attachments',
+        notifications: 'notifications',
+        account_roles: 'accounts',
         employees: 'employees',
         categories: 'categories',
         labels: 'labels',

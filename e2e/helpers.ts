@@ -57,22 +57,30 @@ export const USER_PASSWORD = credential('PIP_E2E_USER_PASSWORD', 'pip2026');
 export const ADMIN_USERNAME = credential('PIP_E2E_ADMIN_USERNAME', 'admin');
 export const ADMIN_PASSWORD = credential('PIP_E2E_ADMIN_PASSWORD', 'admin2026');
 
-/** Login sebagai akun Tim (User bersama) dan pilih pegawai pelaku. */
-export async function loginAsUser(page: Page, actorName = 'Tri Hesti Wahyudiati'): Promise<void> {
+/** Isi form login (NIP atau username) lalu tekan Masuk. */
+export async function submitLogin(
+  page: Page,
+  identifier: string,
+  password: string,
+): Promise<void> {
   await page.goto('/login');
-  await page.getByPlaceholder('Username').fill(USER_USERNAME);
-  await page.getByPlaceholder('Password').fill(USER_PASSWORD);
+  await page.getByLabel('NIP atau Username').fill(identifier);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Masuk' }).click();
+}
+
+/**
+ * Login sebagai akun DEMO (dahulu akun Tim bersama) — hanya baca.
+ * Akun ini tidak terhubung ke data pegawai sehingga tidak ada pemilihan pelaku.
+ */
+export async function loginAsUser(page: Page): Promise<void> {
+  await submitLogin(page, USER_USERNAME, USER_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
-  await pickActor(page, actorName);
 }
 
 /** Login sebagai Admin dan pilih pegawai pelaku. */
 export async function loginAsAdmin(page: Page, actorName = 'Sucianingsih'): Promise<void> {
-  await page.goto('/login');
-  await page.getByPlaceholder('Username').fill(ADMIN_USERNAME);
-  await page.getByPlaceholder('Password').fill(ADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Masuk' }).click();
+  await submitLogin(page, ADMIN_USERNAME, ADMIN_PASSWORD);
   await expect(page).toHaveURL(/\/dashboard/);
   await pickActor(page, actorName);
 }

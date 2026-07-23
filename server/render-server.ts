@@ -35,6 +35,11 @@ const indexHtml = join(distDir, 'index.html');
  * dapat memuat file .ts secara statis. Metode HTTP diambil dari export modul.
  */
 const apiRoutes: Record<string, () => Promise<HandlerModule>> = {
+  '/api/auth/login': () => import('../api/auth/login.ts'),
+  '/api/auth/password': () => import('../api/auth/password.ts'),
+  '/api/admin/accounts': () => import('../api/admin/accounts.ts'),
+  '/api/attachments': () => import('../api/attachments/index.ts'),
+  '/api/attachments/download': () => import('../api/attachments/download.ts'),
   '/api/sync/run': () => import('../api/sync/run.ts'),
   '/api/sync/webhook': () => import('../api/sync/webhook.ts'),
   '/api/integrations/google/start': () => import('../api/integrations/google/start.ts'),

@@ -17,10 +17,10 @@ interface LocationState {
 }
 
 /**
- * Halaman login TERPADU (Docs/09 §C, §D):
- * satu form Username + Password untuk seluruh akun — role (USER/ADMIN)
- * ditentukan server SETELAH kredensial terverifikasi. Tidak ada pemilihan
- * role dan tidak ada tombol "Masuk dengan Google".
+ * Halaman login TERPADU (spesifikasi §D):
+ * satu form "NIP atau Username" + Password untuk seluruh akun. Jenis akun
+ * (ADMIN/EMPLOYEE/DEMO) ditentukan server SETELAH kredensial terverifikasi.
+ * Pesan kegagalan sengaja generik agar tidak membantu enumerasi akun.
  */
 export default function LoginPage() {
   const { status, session, login } = useSessionStore();
@@ -115,7 +115,7 @@ export default function LoginPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!username.trim() || !password) {
-      setError('Masukkan username dan password Anda.');
+      setError('Masukkan NIP/username dan password Anda.');
       setFlashMood('error');
       return;
     }
@@ -124,7 +124,13 @@ export default function LoginPage() {
     try {
       const role = await login(username, password);
       setFlashMood('success');
-      notify.success(role === 'ADMIN' ? 'Selamat datang, Admin!' : 'Selamat datang, Tim PIP!');
+      notify.success(
+        role === 'ADMIN'
+          ? 'Selamat datang, Admin!'
+          : role === 'DEMO'
+            ? 'Masuk sebagai akun demo (hanya lihat).'
+            : 'Selamat datang!',
+      );
       navigate(from, { replace: true });
     } catch (err) {
       setError(errorMessage(err));
@@ -184,7 +190,7 @@ export default function LoginPage() {
             <Mascot mood={mood} className="mx-auto -mt-2 mb-2 max-w-56 lg:hidden" />
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">Masuk</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Masukkan username dan password untuk mengakses aplikasi.
+              Masukkan NIP atau username pegawai beserta password Anda.
             </p>
 
             {error && (
@@ -198,7 +204,7 @@ export default function LoginPage() {
             )}
 
             <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-              <Field label="Username" required>
+              <Field label="NIP atau Username" required>
                 <div className="relative">
                   <UserRound
                     aria-hidden
@@ -206,14 +212,19 @@ export default function LoginPage() {
                   />
                   <Input
                     autoComplete="username"
+                    inputMode="text"
                     className="pl-10"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     onFocus={() => setUsernameFocus(true)}
                     onBlur={() => setUsernameFocus(false)}
-                    placeholder="Username"
+                    placeholder="Contoh: 199503102025211034 atau nur"
+                    aria-describedby="petunjuk-identitas"
                   />
                 </div>
+                <p id="petunjuk-identitas" className="mt-1 text-xs text-slate-500">
+                  Username tidak memakai spasi dan tidak membedakan huruf besar/kecil.
+                </p>
               </Field>
               <Field label="Password" required>
                 <div className="relative">

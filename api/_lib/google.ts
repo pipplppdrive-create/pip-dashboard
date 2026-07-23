@@ -312,3 +312,178 @@ export async function fetchSheetValues(
   const data = (await res.json()) as { values?: unknown[][] };
   return (data.values ?? []).map((row) => row.map((cell) => String(cell ?? '')));
 }
+
+// ---------------------------------------------------------------------------
+// Google Drive (lampiran pekerjaan) — scope PALING SEMPIT: drive.file.
+// drive.file hanya memberi akses ke berkas/folder yang DIBUAT aplikasi ini,
+// bukan seluruh Drive pengguna.
+// ---------------------------------------------------------------------------
+
+export const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+/** Nama folder akar aplikasi di Drive. */
+export const DRIVE_ROOT_FOLDER = 'Dashboard Pekerjaan PIP';
+export const DRIVE_ATTACHMENT_FOLDER = 'Lampiran Pekerjaan';
+
+const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+/**
+ * Drive memakai OAuth akun aplikasi (bukan Service Account) karena Service
+ * Account tidak memiliki kuota penyimpanan Drive pribadi.
+ * Mengembalikan null bila akun Google belum terhubung / belum memberi izin Drive.
+ */
+export async function getDriveAccessToken(env: ServerEnv): Promise<string | null> {
+  const db = dbClient(env);
+  const rows = await db.select<TokenRow>('google_oauth_tokens', 'select=*&id=eq.1');
+  const row = rows[0];
+  if (!row?.refresh_token_ciphertext) return null;
+  if (!(row.scope ?? '').includes(DRIVE_SCOPE)) return null;
+  try {
+    return await getOAuthAccessToken(env);
+  } catch {
+    return null;
+  }
+}
+
+/** Apakah lampiran dapat disimpan ke Google Drive saat ini? */
+export async function driveAvailable(env: ServerEnv): Promise<boolean> {
+  return (await getDriveAccessToken(env)) !== null;
+}
+
+async function driveRequest<T>(
+  accessToken: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/${path}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${accessToken}`, ...(init.headers ?? {}) },
+  });
+  if (!res.ok) {
+    throw new Error(`Google Drive API gagal (${res.status}).`);
+  }
+  return (await res.json()) as T;
+}
+
+/** Cari folder milik aplikasi berdasarkan nama; buat bila belum ada. */
+export async function ensureDriveFolder(
+  accessToken: string,
+  name: string,
+  parentId?: string,
+): Promise<string> {
+  // Kutip tunggal harus di-escape pada query Drive (files.list `q`).
+  const safeName = name.split("'").join("\\'");
+  const query = [
+    `mimeType='${DRIVE_FOLDER_MIME}'`,
+    `name='${safeName}'`,
+    'trashed=false',
+    parentId ? `'${parentId}' in parents` : null,
+  ]
+    .filter(Boolean)
+    .join(' and ');
+  const found = await driveRequest<{ files?: { id: string }[] }>(
+    accessToken,
+    `files?q=${encodeURIComponent(query)}&fields=files(id)&pageSize=1`,
+  );
+  const existing = found.files?.[0]?.id;
+  if (existing) return existing;
+
+  const created = await driveRequest<{ id: string }>(accessToken, 'files?fields=id', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      mimeType: DRIVE_FOLDER_MIME,
+      ...(parentId ? { parents: [parentId] } : {}),
+    }),
+  });
+  return created.id;
+}
+
+/** Folder lampiran sebuah pekerjaan: "[ID Tugas] - [Judul Singkat]". */
+export async function ensureTaskFolder(
+  accessToken: string,
+  taskId: string,
+  taskTitle: string,
+): Promise<string> {
+  const root = await ensureDriveFolder(accessToken, DRIVE_ROOT_FOLDER);
+  const parent = await ensureDriveFolder(accessToken, DRIVE_ATTACHMENT_FOLDER, root);
+  const shortTitle = taskTitle.trim().slice(0, 60) || 'Pekerjaan';
+  return ensureDriveFolder(accessToken, `${taskId.slice(0, 8)} - ${shortTitle}`, parent);
+}
+
+export interface DriveUploadResult {
+  id: string;
+  webViewLink: string | null;
+}
+
+/** Unggah satu berkas (multipart) ke folder Drive tertentu. */
+export async function uploadDriveFile(
+  accessToken: string,
+  folderId: string,
+  fileName: string,
+  mimeType: string,
+  bytes: ArrayBuffer,
+): Promise<DriveUploadResult> {
+  const boundary = `pip${crypto.randomUUID().replace(/-/g, '')}`;
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+  const encoder = new TextEncoder();
+  const head = encoder.encode(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
+      `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
+  );
+  const tail = encoder.encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(head.length + bytes.byteLength + tail.length);
+  body.set(head, 0);
+  body.set(new Uint8Array(bytes), head.length);
+  body.set(tail, head.length + bytes.byteLength);
+
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  if (!res.ok) throw new Error(`Unggah ke Google Drive gagal (${res.status}).`);
+  const data = (await res.json()) as { id: string; webViewLink?: string };
+  return { id: data.id, webViewLink: data.webViewLink ?? null };
+}
+
+/** Unduh isi berkas Drive (dipakai proxy unduhan terkontrol). */
+export async function downloadDriveFile(
+  accessToken: string,
+  fileId: string,
+): Promise<Response> {
+  return fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+/** Pindahkan ke Trash Drive (soft delete) atau pulihkan. */
+export async function setDriveTrashed(
+  accessToken: string,
+  fileId: string,
+  trashed: boolean,
+): Promise<void> {
+  await driveRequest(accessToken, `files/${fileId}?fields=id`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed }),
+  });
+}
+
+/** Hapus permanen dari Drive (khusus Admin). */
+export async function deleteDriveFile(accessToken: string, fileId: string): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Hapus berkas Drive gagal (${res.status}).`);
+  }
+}

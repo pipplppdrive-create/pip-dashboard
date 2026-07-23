@@ -97,6 +97,10 @@ function buildEmployees(): Employee[] {
     initials: e.initials,
     color: e.color,
     nip: e.nip,
+    nipNormalized: e.nip ? e.nip.replace(/[^0-9]/g, '') : null,
+    username: e.displayName.toLowerCase().replace(/[^a-z0-9._-]/g, '') || null,
+    level: /ketua|kepala|koordinator/i.test(e.position) ? ('LEADER' as const) : ('STAFF' as const),
+    supervisorId: null,
     position: e.position,
     team: e.team,
     sortOrder: i,
@@ -211,6 +215,10 @@ type TaskSeed = Omit<
   | 'deleteReason'
   | 'createdByEmployeeId'
   | 'updatedByEmployeeId'
+  | 'ownerEmployeeId'
+  | 'taskType'
+  | 'disposedByEmployeeId'
+  | 'driveFolderId'
 > &
   Partial<Task>;
 
@@ -233,6 +241,10 @@ function task(seed: TaskSeed): Task {
     deleteReason: null,
     createdByEmployeeId: null,
     updatedByEmployeeId: null,
+    ownerEmployeeId: null as string | null,
+    taskType: 'MANDIRI' as const,
+    disposedByEmployeeId: null,
+    driveFolderId: null,
     ...seed,
   };
   const picMainIds =
@@ -241,7 +253,11 @@ function task(seed: TaskSeed): Task {
       : base.picMainId
         ? [base.picMainId]
         : [];
-  return { ...base, picMainIds };
+  return {
+    ...base,
+    picMainIds,
+    ownerEmployeeId: base.ownerEmployeeId ?? base.createdByEmployeeId ?? picMainIds[0] ?? null,
+  };
 }
 
 function buildTasks(): Task[] {
@@ -1003,7 +1019,7 @@ function buildAudit(): AuditEntry[] {
   ): AuditEntry => ({
     id: `aud-seed-${entityId}-${action}-${at}`,
     at,
-    actorRole: 'USER',
+    actorRole: 'EMPLOYEE',
     actorAccount: 'tim-pip',
     employeeId,
     action,

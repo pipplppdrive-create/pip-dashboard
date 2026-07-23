@@ -10,12 +10,14 @@ import {
   Table2,
   Trash2,
   Users,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatRelative } from '@/lib/format';
 import { getDataService } from '@/services';
 import { useEmployees, useSources } from '@/hooks/queries';
+import { AccountsSection } from './sections/AccountsSection';
 import { AuditSection } from './sections/AuditSection';
 import { BoardConfigSection } from './sections/BoardConfigSection';
 import { EmployeesSection } from './sections/EmployeesSection';
@@ -63,6 +65,15 @@ const MODULES: ModuleDef[] = [
     icon: Users,
     iconClass: 'from-sky-500 to-blue-600',
     element: <EmployeesSection />,
+  },
+  {
+    path: 'pengguna',
+    label: 'Pengguna & Akses',
+    description:
+      'Buat akun pegawai, atur username, tingkat Pimpinan/Staf, dan reset password.',
+    icon: UsersRound,
+    iconClass: 'from-indigo-500 to-violet-600',
+    element: <AccountsSection />,
   },
   {
     path: 'board',

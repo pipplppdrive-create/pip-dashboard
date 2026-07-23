@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { LogOut, MonitorSmartphone, RefreshCw, UserRound } from 'lucide-react';
+import { KeyRound, LogOut, MonitorSmartphone, RefreshCw, UserRound, Users } from 'lucide-react';
 import { notify } from '@/components/feedback/toaster';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -13,20 +13,35 @@ import {
   DropdownTrigger,
 } from '@/components/ui/dropdown';
 import { ROUTES } from '@/lib/routes';
-import { useEmployees } from '@/hooks/queries';
+import { useEmployeePhotos, useEmployees } from '@/hooks/queries';
+import { ChangePasswordDialog } from './ChangePasswordDialog';
 import { SessionsDialog } from './SessionsDialog';
 import { useSessionStore } from './session-store';
 
-/** Chip pengguna di header: pegawai pelaku aktif, ganti pelaku, kelola sesi, keluar. */
+const ACCOUNT_LABEL: Record<string, string> = {
+  ADMIN: 'Admin sistem',
+  EMPLOYEE: 'Akun pegawai',
+  DEMO: 'Akun demo · hanya lihat',
+};
+
+/**
+ * Chip pengguna pada header (spesifikasi §O).
+ * Menu: Profil Saya · Ganti Password · Keluar. Profil pribadi TIDAK menjadi
+ * menu sidebar — hanya dapat diakses lewat avatar ini.
+ */
 export function UserMenu() {
-  const { session, role, actorId, openActorPicker, logout } = useSessionStore();
+  const { session, role, actorId, accountEmployeeId, openActorPicker, logout } =
+    useSessionStore();
   const { data: employees } = useEmployees(true);
+  const { data: photos } = useEmployeePhotos(employees);
   const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const navigate = useNavigate();
 
   if (!session) return null;
 
   const actor = employees?.find((e) => e.id === actorId) ?? null;
+  const isEmployeeAccount = Boolean(accountEmployeeId);
 
   async function handleLogout() {
     await logout();
@@ -43,30 +58,43 @@ export function UserMenu() {
             className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white py-1 pr-3 pl-1 shadow-sm transition-colors hover:border-brand-300"
             aria-label="Menu pengguna"
           >
-            <Avatar employee={actor} size="md" />
+            <Avatar employee={actor} size="md" src={photos?.[actor?.avatarPath ?? ''] ?? null} />
             <span className="hidden min-w-0 text-left sm:block">
               <span className="block max-w-32 truncate text-xs leading-tight font-bold text-slate-800">
-                {actor ? actor.displayName : 'Pilih pegawai'}
+                {actor ? actor.displayName : role === 'ADMIN' ? 'Admin' : 'Pengguna'}
               </span>
               <span className="block text-[10px] leading-tight font-semibold tracking-wide text-slate-400 uppercase">
-                {role === 'ADMIN' ? 'Admin' : 'Tim PIP'}
+                {role === 'ADMIN' ? 'Admin' : role === 'DEMO' ? 'Demo' : (actor?.level === 'LEADER' ? 'Pimpinan' : 'Staf')}
               </span>
             </span>
           </button>
         </DropdownTrigger>
-        <DropdownContent className="w-60">
+        <DropdownContent className="w-64">
           <DropdownLabel>
-            {actor ? `${actor.fullName}` : 'Pegawai pelaku belum dipilih'}
+            {actor ? actor.fullName : role === 'ADMIN' ? 'Administrator sistem' : 'Peninjau'}
           </DropdownLabel>
           <div className="px-2.5 pb-2">
-            <Badge tone={role === 'ADMIN' ? 'brand' : 'neutral'}>
-              {role === 'ADMIN' ? 'Akun Admin' : 'Akun bersama Tim PIP'}
+            <Badge tone={role === 'ADMIN' ? 'brand' : role === 'DEMO' ? 'warning' : 'neutral'}>
+              {ACCOUNT_LABEL[role ?? 'DEMO']}
             </Badge>
           </div>
           <DropdownSeparator />
-          <DropdownItem icon={<UserRound />} onSelect={() => openActorPicker()}>
-            {actor ? 'Ganti pegawai pelaku' : 'Pilih pegawai pelaku'}
-          </DropdownItem>
+          {isEmployeeAccount && (
+            <DropdownItem icon={<UserRound />} onSelect={() => navigate(ROUTES.profilSaya)}>
+              Profil Saya
+            </DropdownItem>
+          )}
+          {role !== 'DEMO' && (
+            <DropdownItem icon={<KeyRound />} onSelect={() => setPasswordOpen(true)}>
+              Ganti Password
+            </DropdownItem>
+          )}
+          {/* Akun ADMIN bertindak atas nama pegawai pelaku yang dipilih. */}
+          {!isEmployeeAccount && role === 'ADMIN' && (
+            <DropdownItem icon={<Users />} onSelect={() => openActorPicker()}>
+              {actor ? 'Ganti pegawai pelaku' : 'Pilih pegawai pelaku'}
+            </DropdownItem>
+          )}
           {role === 'ADMIN' && (
             <DropdownItem icon={<MonitorSmartphone />} onSelect={() => setSessionsOpen(true)}>
               Kelola sesi perangkat
@@ -86,9 +114,8 @@ export function UserMenu() {
           </DropdownItem>
         </DropdownContent>
       </DropdownRoot>
-      {role === 'ADMIN' && (
-        <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />
-      )}
+      {role === 'ADMIN' && <SessionsDialog open={sessionsOpen} onOpenChange={setSessionsOpen} />}
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
     </>
   );
 }

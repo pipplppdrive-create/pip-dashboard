@@ -138,8 +138,8 @@ export function WorkStats({ stats, attentionCount }: WorkStatsProps) {
         label="Perlu Perhatian"
         value={attentionCount}
         sub="Tenggat, PIC kosong, atau terhambat"
-        ariaLabel="Buka ringkasan pekerjaan yang perlu perhatian"
-        onClick={() => navigate(`${ROUTES.pekerjaan}?view=ringkasan`)}
+        ariaLabel="Buka pekerjaan yang terlambat"
+        onClick={() => navigate(`${ROUTES.pekerjaan}?quick=TERLAMBAT`)}
         tone="warning"
         icon={<TriangleAlert aria-hidden className="size-4.5 text-warning-500" />}
         delay={nextDelay()}
@@ -152,8 +152,8 @@ export function WorkStats({ stats, attentionCount }: WorkStatsProps) {
             ? `${stats.nearestDue.count} pekerjaan pada tanggal ini`
             : 'Tidak ada tenggat mendatang'
         }
-        ariaLabel="Buka ringkasan pekerjaan dengan tenggat terdekat"
-        onClick={() => navigate(`${ROUTES.pekerjaan}?view=ringkasan`)}
+        ariaLabel="Buka pekerjaan yang mendekati tenggat"
+        onClick={() => navigate(`${ROUTES.pekerjaan}?quick=MENDEKATI_TENGGAT`)}
         icon={<CalendarClock aria-hidden className="size-4.5 text-slate-400" />}
         compactValue
         delay={nextDelay()}

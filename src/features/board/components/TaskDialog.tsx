@@ -21,8 +21,11 @@ import type {
   Step,
   Task,
   TaskTemplate,
+  TaskType,
 } from '@/services/types';
 import { useActorCtx } from '@/features/auth/useActorCtx';
+import { useSessionStore } from '@/features/auth/session-store';
+import { canDispose, canManageTask, viewerFrom } from '@/lib/permissions';
 import { DURATION_LABEL, PRIORITY_LABEL } from '../lib';
 import { useBoardErrorHandler } from '../useBoardActions';
 import { ChecklistEditor } from './ChecklistEditor';
@@ -57,6 +60,8 @@ interface FormState {
   picIds: string[];
   isFocus: boolean;
   checklist: ChecklistGroup[];
+  /** MANDIRI (untuk diri sendiri) atau DISPOSISI (ditugaskan Pimpinan). */
+  taskType: TaskType;
 }
 
 function emptyForm(stepId: string): FormState {
@@ -76,6 +81,7 @@ function emptyForm(stepId: string): FormState {
     picIds: [],
     isFocus: false,
     checklist: [],
+    taskType: 'MANDIRI',
   };
 }
 
@@ -96,6 +102,7 @@ function formFromTask(task: Task): FormState {
     picIds: task.picIds,
     isFocus: task.isFocus,
     checklist: task.checklist,
+    taskType: task.taskType,
   };
 }
 
@@ -134,6 +141,16 @@ export function TaskDialog({
   const onError = useBoardErrorHandler();
   const queryClient = useQueryClient();
 
+  const { role, accountEmployeeId, actorId } = useSessionStore();
+  const viewer = viewerFrom(role, accountEmployeeId ?? actorId, employees);
+  const selfId = accountEmployeeId ?? actorId;
+  const bolehDisposisi = canDispose(viewer);
+  // Staf hanya dapat membuat pekerjaan MANDIRI untuk dirinya sendiri (§J).
+  const kunciPicUtama = !isEdit && !bolehDisposisi;
+  // Pada mode ubah, hanya pemilik/pembuat/Admin yang boleh menyunting bagian
+  // kepemilikan (PIC utama, anggota, prioritas, tenggat, judul).
+  const bolehKelola = !isEdit || (task !== null && canManageTask(viewer, task));
+
   // Reset form HANYA saat dialog dibuka atau target (task) berganti — bukan saat
   // data `steps` selesai dimuat async (mode Supabase). Tanpa penjagaan ini,
   // perubahan `firstStepId` setelah data tiba akan me-reset form & menghapus
@@ -147,8 +164,15 @@ export function TaskDialog({
     }
     if (initedRef.current === initKey) return;
     initedRef.current = initKey;
-    setForm(task ? formFromTask(task) : emptyForm(initialStepId ?? firstStepId));
+    const fresh = task ? formFromTask(task) : emptyForm(initialStepId ?? firstStepId);
+    if (!task && !bolehDisposisi && selfId) {
+      // Pembuat otomatis menjadi pemilik & PIC utama pekerjaan mandiri.
+      fresh.picMainIds = [selfId];
+      fresh.taskType = 'MANDIRI';
+    }
+    setForm(fresh);
     setErrors({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initKey, task, initialStepId, firstStepId]);
 
   // Buat baru: bila step default belum termuat saat dialog dibuka (data async),
@@ -230,8 +254,14 @@ export function TaskDialog({
         }
         notify.success('Pekerjaan diperbarui.');
       } else {
-        await getDataService().tasks.create({ ...payload, stepId: form.stepId }, ctx);
-        notify.success('Pekerjaan dibuat.', form.title);
+        await getDataService().tasks.create(
+          { ...payload, stepId: form.stepId, taskType: form.taskType },
+          ctx,
+        );
+        notify.success(
+          form.taskType === 'DISPOSISI' ? 'Disposisi dibuat.' : 'Pekerjaan dibuat.',
+          form.title,
+        );
       }
       await queryClient.invalidateQueries({ queryKey: ['tasks'] });
       onOpenChange(false);
@@ -353,29 +383,74 @@ export function TaskDialog({
               onChange={(e) => set('dueDate', e.target.value)}
             />
           </Field>
+          {/* Jenis pekerjaan — hanya Pimpinan/Admin yang dapat mendisposisikan */}
+          {!isEdit && bolehDisposisi && (
+            <Field
+              label="Jenis pekerjaan"
+              hint="Disposisi menugaskan pegawai lain sebagai PIC utama."
+              className="sm:col-span-2"
+            >
+              <div role="group" className="inline-flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                {(
+                  [
+                    { value: 'MANDIRI', label: 'Mandiri (untuk saya)' },
+                    { value: 'DISPOSISI', label: 'Disposisi ke pegawai' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={form.taskType === opt.value}
+                    onClick={() => {
+                      set('taskType', opt.value);
+                      if (opt.value === 'MANDIRI' && selfId) set('picMainIds', [selfId]);
+                    }}
+                    className={cn(
+                      'pressable min-h-9 cursor-pointer rounded-lg px-3 text-sm font-semibold transition-colors',
+                      form.taskType === opt.value
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
           <Field
             label="PIC utama"
-            hint="Bisa lebih dari satu pegawai."
+            hint={
+              kunciPicUtama
+                ? 'Staf membuat pekerjaan untuk dirinya sendiri; undang rekan sebagai anggota tim.'
+                : 'Bisa lebih dari satu pegawai.'
+            }
             className="sm:col-span-2"
           >
             <PicPicker
               employees={employees}
               value={form.picMainIds}
+              disabled={kunciPicUtama || !bolehKelola}
               onChange={(ids) => {
                 set('picMainIds', ids);
-                // Cegah duplikasi: pegawai yang jadi PIC utama keluar dari tambahan.
+                // Cegah duplikasi: pegawai yang jadi PIC utama keluar dari anggota.
                 setForm((f) => ({ ...f, picIds: f.picIds.filter((id) => !ids.includes(id)) }));
               }}
               placeholder="Pilih PIC utama…"
             />
           </Field>
-          <Field label="PIC tambahan" hint="Opsional." className="sm:col-span-2">
+          <Field
+            label="Anggota tim"
+            hint="Rekan yang diundang dapat memperbarui progres, checklist, komentar, dan lampiran."
+            className="sm:col-span-2"
+          >
             <PicPicker
               employees={employees}
               value={form.picIds}
+              disabled={!bolehKelola}
               onChange={(ids) => set('picIds', ids)}
               excludeIds={form.picMainIds}
-              placeholder="Pilih PIC tambahan…"
+              placeholder="Undang rekan sebagai anggota tim…"
             />
           </Field>
         </div>

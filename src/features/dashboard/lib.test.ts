@@ -61,6 +61,10 @@ function makeTask(partial: Partial<Task>): Task {
     version: 1,
     createdByEmployeeId: null,
     updatedByEmployeeId: null,
+    ownerEmployeeId: null,
+    taskType: 'MANDIRI',
+    disposedByEmployeeId: null,
+    driveFolderId: null,
     ...partial,
   };
 }

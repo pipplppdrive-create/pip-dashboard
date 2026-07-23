@@ -8,8 +8,10 @@ import { AppShell } from '@/components/layout/AppShell';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipProvider } from '@/components/ui/tooltip';
 import { ActorPickerDialog } from '@/features/auth/ActorPickerDialog';
+import { ForcePasswordChange } from '@/features/auth/ForcePasswordChange';
 import { RequireAdmin, RequireAuth, SessionBoot } from '@/features/auth/guards';
 import { UserMenu } from '@/features/auth/UserMenu';
+import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useSessionStore } from '@/features/auth/session-store';
 import { useAppSettings, useEmployees } from '@/hooks/queries';
 import { ROUTES } from '@/lib/routes';
@@ -20,6 +22,7 @@ const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'));
 const BoardPage = lazy(() => import('@/features/board/BoardPage'));
 const PlanPage = lazy(() => import('@/features/plan/PlanPage'));
 const EmployeesPage = lazy(() => import('@/features/employees/EmployeesPage'));
+const ProfilePage = lazy(() => import('@/features/employees/ProfilePage'));
 const AdminPage = lazy(() => import('@/features/admin/AdminPage'));
 const UiGalleryPage = import.meta.env.DEV ? lazy(() => import('@/features/dev/UiGalleryPage')) : null;
 
@@ -65,29 +68,32 @@ function DataModeBadge() {
 }
 
 function ShellLayout() {
-  const { role, session, actorId, openActorPicker } = useSessionStore();
+  const { role, session, actorId, accountEmployeeId, openActorPicker } = useSessionStore();
   const { data: settings } = useAppSettings();
   const { data: employees } = useEmployees(false);
   const promptedRef = useRef<string | null>(null);
 
-  // Setelah login, minta pilih pegawai pelaku bila belum ada / tidak valid lagi.
+  // Akun ADMIN bertindak atas nama pegawai pelaku: minta pilih bila belum ada.
+  // Akun EMPLOYEE selalu bertindak atas namanya sendiri (tanpa dialog).
   useEffect(() => {
-    if (!session || !employees) return;
+    if (!session || !employees || accountEmployeeId) return;
+    if (role !== 'ADMIN') return;
     const valid = actorId !== null && employees.some((e) => e.id === actorId);
     if (!valid && promptedRef.current !== session.id) {
       promptedRef.current = session.id;
       openActorPicker();
     }
-  }, [session, employees, actorId, openActorPicker]);
+  }, [session, employees, actorId, accountEmployeeId, role, openActorPicker]);
 
   return (
     <AppShell
-      role={role ?? 'USER'}
+      role={role ?? 'DEMO'}
       appName={settings?.appName ?? 'Dashboard PIP'}
       logoDataUrl={settings?.logoDataUrl ?? null}
       headerExtra={
         <div className="flex items-center gap-2.5">
           <DataModeBadge />
+          <NotificationBell />
           <UserMenu />
         </div>
       }
@@ -96,6 +102,16 @@ function ShellLayout() {
       <ActorPickerDialog />
     </AppShell>
   );
+}
+
+/**
+ * Gerbang WAJIB GANTI PASSWORD — selama password sementara belum diganti,
+ * aplikasi utama tidak dapat diakses (spesifikasi §E poin 4).
+ */
+function RequirePasswordChanged({ children }: { children: React.ReactNode }) {
+  const mustChange = useSessionStore((s) => s.mustChangePassword);
+  if (mustChange) return <ForcePasswordChange />;
+  return <>{children}</>;
 }
 
 export default function App() {
@@ -114,7 +130,9 @@ export default function App() {
                   <Route
                     element={
                       <RequireAuth>
-                        <ShellLayout />
+                        <RequirePasswordChanged>
+                          <ShellLayout />
+                        </RequirePasswordChanged>
                       </RequireAuth>
                     }
                   >
@@ -122,6 +140,8 @@ export default function App() {
                     <Route path={ROUTES.pekerjaan} element={<BoardPage />} />
                     <Route path={ROUTES.rencana} element={<PlanPage />} />
                     <Route path={ROUTES.pegawai} element={<EmployeesPage />} />
+                    <Route path={ROUTES.profilSaya} element={<ProfilePage self />} />
+                    <Route path={`${ROUTES.profilPegawai}/:id`} element={<ProfilePage />} />
                     <Route
                       path={`${ROUTES.admin}/*`}
                       element={

@@ -1,5 +1,22 @@
 /** Logika murni Board — teruji unit, bebas React. */
-import type { DurationType, Priority, Step, Task } from '@/services/types';
+import type { DurationType, Priority, Step, StepKind, Task } from '@/services/types';
+import { isMyTask, type Viewer } from '@/lib/permissions';
+
+/** Cakupan tampilan Board — filter dari data yang SAMA (bukan board terpisah). */
+export type BoardScope = 'all' | 'mine';
+
+/** Indikator cepat di atas Board (spesifikasi §I). */
+export type QuickFilterKey = 'TERLAMBAT' | 'MENDEKATI_TENGGAT' | 'TERHAMBAT' | 'TANPA_PIC';
+
+export const QUICK_FILTER_LABEL: Record<QuickFilterKey, string> = {
+  TERLAMBAT: 'Terlambat',
+  MENDEKATI_TENGGAT: 'Mendekati Tenggat',
+  TERHAMBAT: 'Terhambat',
+  TANPA_PIC: 'Tanpa PIC',
+};
+
+/** Ambang "mendekati tenggat" (hari). */
+export const DUE_SOON_DAYS = 3;
 
 export interface BoardFilters {
   search: string;
@@ -10,6 +27,9 @@ export interface BoardFilters {
   /** Cocok bila task memiliki SALAH SATU pegawai ini sebagai PIC (utama/tambahan). */
   picIds: string[];
   durationType: DurationType | null;
+  /** Saringan tenggat: semua | ada tenggat | tanpa tenggat. */
+  dueFilter: 'ALL' | 'HAS_DUE' | 'NO_DUE';
+  quick: QuickFilterKey | null;
 }
 
 export const EMPTY_FILTERS: BoardFilters = {
@@ -20,6 +40,8 @@ export const EMPTY_FILTERS: BoardFilters = {
   priority: null,
   picIds: [],
   durationType: null,
+  dueFilter: 'ALL',
+  quick: null,
 };
 
 export function countActiveFilters(f: BoardFilters): number {
@@ -29,7 +51,15 @@ export function countActiveFilters(f: BoardFilters): number {
   if (f.priority) n += 1;
   if (f.picIds.length > 0) n += 1;
   if (f.durationType) n += 1;
+  if (f.dueFilter !== 'ALL') n += 1;
   return n;
+}
+
+/** Tanggal ISO n hari ke depan dari `todayIso`. */
+export function addDaysIso(todayIso: string, days: number): string {
+  const date = new Date(`${todayIso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 export function taskMatchesFilters(task: Task, f: BoardFilters): boolean {
@@ -51,7 +81,67 @@ export function taskMatchesFilters(task: Task, f: BoardFilters): boolean {
     if (!f.picIds.some((id) => pics.has(id))) return false;
   }
   if (f.durationType && task.durationType !== f.durationType) return false;
+  if (f.dueFilter === 'HAS_DUE' && !task.dueDate) return false;
+  if (f.dueFilter === 'NO_DUE' && task.dueDate) return false;
   return true;
+}
+
+/** Apakah kartu cocok dengan salah satu indikator cepat. */
+export function matchesQuickFilter(
+  task: Task,
+  key: QuickFilterKey,
+  kinds: Map<string, StepKind>,
+  todayIso: string,
+): boolean {
+  const kind = kinds.get(task.stepId);
+  switch (key) {
+    case 'TERLAMBAT':
+      return Boolean(task.dueDate && task.dueDate < todayIso && kind !== 'DONE');
+    case 'MENDEKATI_TENGGAT':
+      return Boolean(
+        task.dueDate &&
+          task.dueDate >= todayIso &&
+          task.dueDate <= addDaysIso(todayIso, DUE_SOON_DAYS) &&
+          kind !== 'DONE',
+      );
+    case 'TERHAMBAT':
+      return kind === 'BLOCKED';
+    case 'TANPA_PIC':
+      return task.picMainIds.length === 0 && !task.picMainId;
+    default:
+      return false;
+  }
+}
+
+/** Jumlah kartu aktif per indikator cepat (dipakai sebagai badge chip). */
+export function quickFilterCounts(
+  tasks: readonly Task[],
+  steps: readonly Step[],
+  todayIso: string,
+): Record<QuickFilterKey, number> {
+  const kinds = new Map(steps.map((s) => [s.id, s.kind] as const));
+  const live = tasks.filter((t) => !t.archivedAt && !t.deletedAt);
+  return {
+    TERLAMBAT: live.filter((t) => matchesQuickFilter(t, 'TERLAMBAT', kinds, todayIso)).length,
+    MENDEKATI_TENGGAT: live.filter((t) =>
+      matchesQuickFilter(t, 'MENDEKATI_TENGGAT', kinds, todayIso),
+    ).length,
+    TERHAMBAT: live.filter((t) => matchesQuickFilter(t, 'TERHAMBAT', kinds, todayIso)).length,
+    TANPA_PIC: live.filter((t) => matchesQuickFilter(t, 'TANPA_PIC', kinds, todayIso)).length,
+  };
+}
+
+/**
+ * "Pekerjaan Saya" hanyalah SARINGAN dari data yang sama — tidak ada tabel,
+ * board, atau duplikasi kartu per pegawai.
+ */
+export function applyScope(
+  tasks: readonly Task[],
+  scope: BoardScope,
+  viewer: Viewer,
+): readonly Task[] {
+  if (scope !== 'mine') return tasks;
+  return tasks.filter((t) => isMyTask(viewer, t));
 }
 
 /** Kartu per step, terurut, setelah filter (step filter diterapkan di level kolom). */
@@ -59,13 +149,17 @@ export function buildColumns(
   tasks: readonly Task[],
   steps: readonly Step[],
   filters: BoardFilters,
+  opts?: { todayIso?: string },
 ): Map<string, Task[]> {
   const map = new Map<string, Task[]>();
   for (const step of steps) map.set(step.id, []);
+  const kinds = new Map(steps.map((s) => [s.id, s.kind] as const));
+  const todayIso = opts?.todayIso ?? new Date().toISOString().slice(0, 10);
   const sorted = [...tasks].sort((a, b) => a.sortOrder - b.sortOrder);
   for (const task of sorted) {
     if (task.archivedAt || task.deletedAt) continue;
     if (!taskMatchesFilters(task, filters)) continue;
+    if (filters.quick && !matchesQuickFilter(task, filters.quick, kinds, todayIso)) continue;
     map.get(task.stepId)?.push(task);
   }
   return map;

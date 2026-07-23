@@ -19,20 +19,19 @@ test.describe('login & akses', () => {
 
   test('password salah menampilkan pesan error', async ({ page }) => {
     await page.goto('/login');
-    await page.getByPlaceholder('Username').fill(USER_USERNAME);
-    await page.getByPlaceholder('Password').fill('password-salah');
+    await page.getByLabel('NIP atau Username').fill(USER_USERNAME);
+    await page.getByLabel('Password', { exact: true }).fill('password-salah');
     await page.getByRole('button', { name: 'Masuk' }).click();
-    await expect(page.getByRole('alert')).toContainText('Username atau password salah');
+    await expect(page.getByRole('alert')).toContainText('NIP/username atau password salah');
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test('login User: masuk, pilih pegawai pelaku, sesi persisten setelah reload', async ({
+  test('login akun DEMO: masuk, menu terkunci, sesi persisten setelah reload', async ({
     page,
   }) => {
     const errors = collectConsoleErrors(page);
-    await loginAsUser(page, 'Tri Hesti Wahyudiati');
-    // Chip pegawai pelaku tampil
-    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toContainText('Hesti');
+    await loginAsUser(page);
+    await expect(page.getByRole('button', { name: 'Menu pengguna' })).toBeVisible();
 
     // Navigasi User: Dashboard, Pekerjaan, Daftar Pegawai tampil; Admin tidak ada
     const nav = page.getByRole('navigation', { name: 'Menu' });
@@ -48,7 +47,7 @@ test.describe('login & akses', () => {
     expect(errors).toEqual([]);
   });
 
-  test('User tidak dapat membuka halaman Admin (akses ditolak)', async ({ page }) => {
+  test('akun DEMO tidak dapat membuka halaman Admin (akses ditolak)', async ({ page }) => {
     await loginAsUser(page);
     await page.goto('/admin');
     await expect(page.getByRole('heading', { name: 'Akses ditolak' })).toBeVisible();
@@ -110,8 +109,8 @@ test.describe('login & akses', () => {
     await expect(userRow.getByRole('button', { name: 'Cabut' })).toHaveCount(0);
   });
 
-  test('ganti pegawai pelaku dari menu pengguna', async ({ page }) => {
-    await loginAsUser(page, 'Tri Hesti Wahyudiati');
+  test('Admin dapat mengganti pegawai pelaku dari menu pengguna', async ({ page }) => {
+    await loginAsAdmin(page);
     await page.getByRole('button', { name: 'Menu pengguna' }).click();
     await page.getByRole('menuitem', { name: 'Ganti pegawai pelaku' }).click();
     const dialog = page.getByRole('dialog', { name: 'Siapa yang sedang bekerja?' });
@@ -123,12 +122,12 @@ test.describe('login & akses', () => {
     test.skip(IS_SUPABASE_E2E, 'Tidak memicu rate-limit pada akun Supabase Auth nyata.');
     await page.goto('/login');
     for (let i = 0; i < 5; i += 1) {
-      await page.getByPlaceholder('Username').fill(ADMIN_USERNAME);
-      await page.getByPlaceholder('Password').fill('salah-terus');
+      await page.getByLabel('NIP atau Username').fill(ADMIN_USERNAME);
+      await page.getByLabel('Password', { exact: true }).fill('salah-terus');
       await page.getByRole('button', { name: 'Masuk' }).click();
       await expect(page.getByRole('alert')).toBeVisible();
     }
-    await page.getByPlaceholder('Password').fill(ADMIN_PASSWORD);
+    await page.getByLabel('Password', { exact: true }).fill(ADMIN_PASSWORD);
     await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page.getByRole('alert')).toContainText('Terlalu banyak percobaan');
   });

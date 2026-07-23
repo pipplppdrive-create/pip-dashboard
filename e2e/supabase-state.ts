@@ -8,6 +8,9 @@ type TableName =
   | 'tasks'
   | 'task_comments'
   | 'attachments'
+  | 'attachment_groups'
+  | 'attachment_versions'
+  | 'notifications'
   | 'device_sessions'
   | 'audit_log'
   | 'distribution_snapshots';
@@ -31,6 +34,11 @@ const TABLES: TableConfig[] = [
   { name: 'tasks', pk: 'id' },
   { name: 'task_comments', pk: 'id' },
   { name: 'attachments', pk: 'id' },
+  // Lampiran berkelompok + notifikasi ikut snapshot agar uji tidak
+  // meninggalkan data di produksi (lihat catatan kebocoran step "Blocking").
+  { name: 'attachment_groups', pk: 'id' },
+  { name: 'attachment_versions', pk: 'id' },
+  { name: 'notifications', pk: 'id' },
   { name: 'device_sessions', pk: 'id' },
   { name: 'audit_log', pk: 'id' },
   { name: 'distribution_snapshots', pk: 'id' },
@@ -38,6 +46,9 @@ const TABLES: TableConfig[] = [
 
 const DELETE_ORDER: TableName[] = [
   'distribution_snapshots',
+  'notifications',
+  'attachment_versions',
+  'attachment_groups',
   'attachments',
   'task_comments',
   'audit_log',
@@ -51,6 +62,9 @@ const RESTORE_ORDER: TableName[] = [
   'tasks',
   'task_comments',
   'attachments',
+  'attachment_groups',
+  'attachment_versions',
+  'notifications',
   'device_sessions',
   'audit_log',
   'distribution_snapshots',

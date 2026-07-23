@@ -11,7 +11,22 @@
 // Enum & tipe dasar
 // ---------------------------------------------------------------------------
 
-export type Role = 'USER' | 'ADMIN';
+/**
+ * Jenis akun SISTEM — terpisah dari tingkat organisasi (lihat EmployeeLevel).
+ * - ADMIN    : administrator sistem (akses penuh, tanpa data pegawai).
+ * - EMPLOYEE : akun pegawai perorangan, terhubung ke tepat satu data pegawai.
+ * - DEMO     : akun peninjau read-only (dahulu akun USER bersama).
+ */
+export type AccountType = 'ADMIN' | 'EMPLOYEE' | 'DEMO';
+
+/** Alias historis; seluruh kode baru memakai AccountType. */
+export type Role = AccountType;
+
+/** Tingkat pegawai dalam organisasi — BUKAN hak akses sistem. */
+export type EmployeeLevel = 'LEADER' | 'STAFF';
+
+/** Jenis pekerjaan: dibuat sendiri (mandiri) atau didisposisikan Pimpinan. */
+export type TaskType = 'MANDIRI' | 'DISPOSISI';
 
 export type Jenjang = 'SD' | 'SMP' | 'SMA' | 'SMK';
 
@@ -51,9 +66,17 @@ export interface Employee {
   color: string;
   /** NIP; null bila tidak tersedia. */
   nip: string | null;
+  /** NIP hanya angka (untuk login & keunikan); null bila NIP kosong. */
+  nipNormalized: string | null;
+  /** Nama pendek unik untuk login (huruf kecil); null bila belum ditetapkan. */
+  username: string | null;
   position: string;
   /** Instansi/tim penempatan. */
   team: string;
+  /** Tingkat organisasi (Pimpinan/Staf) — hanya Admin yang dapat mengubah. */
+  level: EmployeeLevel;
+  /** Atasan langsung; null bila belum ditetapkan. */
+  supervisorId: string | null;
   sortOrder: number;
   active: boolean;
   /** Path foto profil di penyimpanan (null = pakai avatar bawaan). */
@@ -138,8 +161,16 @@ export interface Task {
    */
   picMainIds: string[];
   picMainId: string | null;
-  /** PIC tambahan (tidak termasuk PIC utama). */
+  /** Anggota tim yang diundang (di luar PIC utama). */
   picIds: string[];
+  /** Pemilik pekerjaan — berhak penuh atas pekerjaan ini (kecuali hapus permanen). */
+  ownerEmployeeId: string | null;
+  /** MANDIRI = dibuat untuk diri sendiri; DISPOSISI = ditugaskan Pimpinan. */
+  taskType: TaskType;
+  /** Pimpinan yang mendisposisikan (jika taskType = DISPOSISI). */
+  disposedByEmployeeId: string | null;
+  /** Folder Google Drive lampiran pekerjaan ini (null bila belum dibuat). */
+  driveFolderId: string | null;
   checklist: ChecklistGroup[];
   /** Ditandai "Fokus Hari Ini". */
   isFocus: boolean;
@@ -164,6 +195,7 @@ export interface TaskComment {
   createdAt: string;
 }
 
+/** Lampiran model lama (0001) — dipertahankan untuk kompatibilitas data lama. */
 export interface Attachment {
   id: string;
   taskId: string;
@@ -172,6 +204,43 @@ export interface Attachment {
   mimeType: string;
   uploadedByEmployeeId: string;
   createdAt: string;
+}
+
+/** Tempat berkas lampiran disimpan. */
+export type StorageBackend = 'drive' | 'supabase';
+
+/** Satu versi berkas — setiap versi adalah berkas tersendiri (tidak menimpa). */
+export interface AttachmentVersion {
+  id: string;
+  groupId: string;
+  version: number;
+  fileName: string;
+  size: number;
+  mimeType: string;
+  storageBackend: StorageBackend;
+  driveFileId: string | null;
+  driveWebViewLink: string | null;
+  checksum: string | null;
+  changeNote: string;
+  uploadedByEmployeeId: string | null;
+  createdAt: string;
+  deletedAt: string | null;
+  deletedByEmployeeId: string | null;
+}
+
+/** Kelompok lampiran (satu "dokumen" dengan riwayat versi). */
+export interface AttachmentGroup {
+  id: string;
+  taskId: string;
+  title: string;
+  driveFolderId: string | null;
+  createdByEmployeeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  deletedByEmployeeId: string | null;
+  /** Versi terbaru lebih dulu. */
+  versions: AttachmentVersion[];
 }
 
 // ---------------------------------------------------------------------------
@@ -269,11 +338,18 @@ export type AuditAction =
   | 'REVOKE_SESSION'
   | 'SETTINGS_UPDATE'
   | 'PASSWORD_CHANGE'
+  | 'PASSWORD_RESET'
+  | 'ACCOUNT_CREATE'
+  | 'ACCOUNT_ACTIVATE'
+  | 'ACCOUNT_DEACTIVATE'
+  | 'DISPOSE'
   | 'BACKUP'
   | 'RESTORE_BACKUP'
   | 'SYNC';
 
 export type AuditEntityType =
+  | 'ACCOUNT'
+  | 'NOTIFICATION'
   | 'TASK'
   | 'STEP'
   | 'BOARD'
@@ -331,6 +407,45 @@ export interface ActivityEvent {
   title: string;
   /** Keterangan tambahan, mis. "To Do → On Progress". */
   detail: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Notifikasi per pengguna (popup lonceng pada header — bukan menu)
+// ---------------------------------------------------------------------------
+
+export type NotificationType =
+  | 'TASK_ASSIGNED'
+  | 'TASK_DISPOSED'
+  | 'MEMBER_ADDED'
+  | 'MEMBER_REMOVED'
+  | 'PIC_CHANGED'
+  | 'DUE_DATE_CHANGED'
+  | 'STATUS_CHANGED'
+  | 'PROGRESS_CHANGED'
+  | 'TASK_BLOCKED'
+  | 'DUE_SOON'
+  | 'OVERDUE'
+  | 'MENTIONED'
+  | 'COMMENT_ADDED'
+  | 'COMMENT_REPLY'
+  | 'ATTACHMENT_ADDED'
+  | 'ATTACHMENT_VERSION'
+  | 'ATTACHMENT_DELETED'
+  | 'ATTACHMENT_RESTORED'
+  | 'PASSWORD_RESET';
+
+export interface NotificationItem {
+  id: string;
+  recipientEmployeeId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  /** Pekerjaan terkait — dipakai untuk membuka detail langsung dari notifikasi. */
+  taskId: string | null;
+  actorEmployeeId: string | null;
+  metadata: Record<string, unknown>;
+  readAt: string | null;
+  createdAt: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,7 +589,7 @@ export interface ActivityPlanItem {
 
 export interface SessionInfo {
   id: string;
-  role: Role;
+  role: AccountType;
   account: string;
   deviceLabel: string;
   createdAt: string;
@@ -484,7 +599,27 @@ export interface SessionInfo {
 
 export interface AuthState {
   session: SessionInfo | null;
-  role: Role | null;
+  role: AccountType | null;
+  /** Pegawai yang terhubung ke akun (hanya akun EMPLOYEE). */
+  employeeId: string | null;
+  /** true → pengguna WAJIB mengganti password sebelum memakai aplikasi. */
+  mustChangePassword: boolean;
+}
+
+/**
+ * Ringkasan akun pegawai untuk halaman Admin "Pengguna & Akses".
+ * TIDAK PERNAH memuat password, token, maupun email internal Auth.
+ */
+export interface EmployeeAccount {
+  employeeId: string;
+  /** true bila pegawai sudah memiliki akun aplikasi. */
+  hasAccount: boolean;
+  accountType: AccountType | null;
+  isActive: boolean;
+  mustChangePassword: boolean;
+  lastLoginAt: string | null;
+  passwordChangedAt: string | null;
+  createdAt: string | null;
 }
 
 export interface AppSettings {
@@ -522,6 +657,8 @@ export type ChangeTopic =
   | 'integrations'
   | 'settings'
   | 'sessions'
+  | 'notifications'
+  | 'accounts'
   | 'audit';
 
 export interface ChangeEvent {
@@ -560,6 +697,8 @@ export interface TaskCreateInput {
   picIds?: string[];
   checklist?: ChecklistGroup[];
   isFocus?: boolean;
+  /** MANDIRI (default) atau DISPOSISI (khusus Pimpinan). */
+  taskType?: TaskType;
 }
 
 export type TaskPatch = Partial<
@@ -580,6 +719,8 @@ export type TaskPatch = Partial<
     | 'picIds'
     | 'checklist'
     | 'isFocus'
+    | 'ownerEmployeeId'
+    | 'taskType'
   >
 >;
 
@@ -589,8 +730,11 @@ export interface EmployeeInput {
   initials: string;
   color: string;
   nip?: string | null;
+  username?: string | null;
   position: string;
   team: string;
+  level?: EmployeeLevel;
+  supervisorId?: string | null;
   sortOrder?: number;
   active?: boolean;
 }
@@ -627,14 +771,44 @@ export interface BackupPayload {
 export interface AuthService {
   getState(): Promise<AuthState>;
   /**
-   * Login terpadu: satu form untuk seluruh akun. Role (USER/ADMIN) ditentukan
-   * SETELAH kredensial terverifikasi — tidak ada pemilihan role di halaman login.
+   * Login terpadu: satu form untuk seluruh akun. Identitas dapat berupa NIP,
+   * username pegawai, atau nama akun sistem. Jenis akun ditentukan SETELAH
+   * kredensial terverifikasi — tidak pernah dipercaya dari frontend.
    */
-  login(username: string, password: string): Promise<SessionInfo>;
+  login(identifier: string, password: string): Promise<SessionInfo>;
   logout(): Promise<void>;
+  /**
+   * Ganti password sendiri. `currentPassword` wajib kecuali pada alur
+   * "wajib ganti password" setelah login pertama.
+   */
+  changeOwnPassword(newPassword: string, currentPassword?: string): Promise<void>;
   /** Daftar sesi aktif/riwayat sesi (Admin). */
   listSessions(): Promise<SessionInfo[]>;
   revokeSession(sessionId: string): Promise<void>;
+}
+
+/**
+ * Pengelolaan akun pegawai (khusus ADMIN). Seluruh operasi berjalan lewat
+ * endpoint server tepercaya; service role key & email internal Auth TIDAK
+ * PERNAH sampai ke frontend.
+ */
+export interface AccountService {
+  list(): Promise<EmployeeAccount[]>;
+  /** Buat akun untuk satu pegawai (password sementara). */
+  provision(employeeId: string): Promise<EmployeeAccount>;
+  /** Buat akun untuk seluruh pegawai aktif yang belum punya akun (idempotent). */
+  provisionAll(): Promise<{ created: number; skipped: number; failed: string[] }>;
+  /** Kembalikan password ke sementara & wajibkan ganti password. */
+  resetPassword(employeeId: string): Promise<void>;
+  setActive(employeeId: string, active: boolean): Promise<void>;
+}
+
+export interface NotificationService {
+  /** Notifikasi milik pengguna saat ini (terbaru lebih dulu). */
+  list(opts?: { limit?: number; unreadOnly?: boolean }): Promise<NotificationItem[]>;
+  unreadCount(): Promise<number>;
+  markRead(id: string): Promise<void>;
+  markAllRead(): Promise<void>;
 }
 
 export interface EmployeeService {
@@ -700,11 +874,40 @@ export interface TaskService {
 }
 
 export interface AttachmentService {
+  /** Lampiran model lama (0001) — hanya untuk data yang sudah ada. */
   list(taskId: string): Promise<Attachment[]>;
   upload(taskId: string, file: File, ctx: ActorContext): Promise<Attachment>;
   /** URL unduh berumur pendek (signed URL di produksi, object URL di mode lokal). */
   getDownloadUrl(id: string): Promise<string>;
   remove(id: string, ctx: ActorContext): Promise<void>;
+
+  // -- Model berkelompok + riwayat versi (Google Drive / Supabase Storage) --
+  /** Kelompok lampiran sebuah pekerjaan beserta seluruh versinya. */
+  listGroups(taskId: string, opts?: { includeDeleted?: boolean }): Promise<AttachmentGroup[]>;
+  /** Jumlah kelompok lampiran aktif per pekerjaan (indikator kartu board). */
+  countsByTask(): Promise<Record<string, number>>;
+  /** Unggah versi pertama sebuah kelompok baru. */
+  createGroup(
+    taskId: string,
+    input: { title: string; file: File; changeNote?: string },
+    ctx: ActorContext,
+  ): Promise<AttachmentGroup>;
+  /** Unggah versi baru pada kelompok yang sudah ada. */
+  addVersion(
+    groupId: string,
+    input: { file: File; changeNote?: string },
+    ctx: ActorContext,
+  ): Promise<AttachmentGroup>;
+  /** URL unduh berumur pendek untuk satu versi. */
+  versionDownloadUrl(versionId: string): Promise<string>;
+  /** Soft delete satu versi (berkas tetap ada; dapat dipulihkan). */
+  softDeleteVersion(versionId: string, ctx: ActorContext): Promise<void>;
+  restoreVersion(versionId: string, ctx: ActorContext): Promise<void>;
+  /** Soft delete seluruh kelompok. */
+  softDeleteGroup(groupId: string, ctx: ActorContext): Promise<void>;
+  restoreGroup(groupId: string, ctx: ActorContext): Promise<void>;
+  /** Hapus permanen (khusus Admin) — berkas ikut dihapus dari penyimpanan. */
+  permanentDeleteGroup(groupId: string, ctx: ActorContext): Promise<void>;
 }
 
 export interface TaxonomyService {
@@ -836,6 +1039,8 @@ export interface ActivityPlanService {
 export interface DataService {
   readonly mode: 'local' | 'supabase';
   auth: AuthService;
+  accounts: AccountService;
+  notifications: NotificationService;
   employees: EmployeeService;
   board: BoardService;
   tasks: TaskService;

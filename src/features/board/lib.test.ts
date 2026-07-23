@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Step, Task } from '@/services/types';
-import { buildColumns, countActiveFilters, EMPTY_FILTERS, taskMatchesFilters } from './lib';
+import {
+  applyScope,
+  buildColumns,
+  countActiveFilters,
+  EMPTY_FILTERS,
+  matchesQuickFilter,
+  quickFilterCounts,
+  taskMatchesFilters,
+} from './lib';
 
 function makeTask(partial: Partial<Task>): Task {
   return {
@@ -31,6 +39,10 @@ function makeTask(partial: Partial<Task>): Task {
     version: 1,
     createdByEmployeeId: null,
     updatedByEmployeeId: null,
+    ownerEmployeeId: null,
+    taskType: 'MANDIRI',
+    disposedByEmployeeId: null,
+    driveFolderId: null,
     ...partial,
   };
 }
@@ -96,5 +108,70 @@ describe('countActiveFilters', () => {
     expect(
       countActiveFilters({ ...EMPTY_FILTERS, categoryId: 'c', priority: 'TINGGI', search: 'x' }),
     ).toBe(2);
+  });
+});
+
+describe('cakupan & indikator cepat Board', () => {
+  const STEPS: Step[] = [
+    { id: 's1', boardId: 'b', name: 'To Do', kind: 'NORMAL', color: '#1', sortOrder: 0, deletedAt: null, version: 1 },
+    { id: 's2', boardId: 'b', name: 'Blocking', kind: 'BLOCKED', color: '#2', sortOrder: 1, deletedAt: null, version: 1 },
+    { id: 's3', boardId: 'b', name: 'Done', kind: 'DONE', color: '#3', sortOrder: 2, deletedAt: null, version: 1 },
+  ];
+  const TODAY = '2026-07-23';
+  const VIEWER = { accountType: 'EMPLOYEE' as const, employeeId: 'nur', level: 'STAFF' as const };
+
+  const tasks = [
+    makeTask({ id: 'milikku', picMainIds: ['nur'], picMainId: 'nur', ownerEmployeeId: 'nur' }),
+    makeTask({ id: 'anggota', picIds: ['nur'] }),
+    makeTask({ id: 'oranglain', picMainIds: ['ulfi'], picMainId: 'ulfi' }),
+    makeTask({ id: 'terlambat', dueDate: '2026-07-01' }),
+    makeTask({ id: 'segera', dueDate: '2026-07-24' }),
+    makeTask({ id: 'terhambat', stepId: 's2' }),
+    makeTask({ id: 'selesai-telat', stepId: 's3', dueDate: '2026-07-01' }),
+  ];
+
+  it('Pekerjaan Saya hanya menyaring data yang sama (tanpa duplikasi)', () => {
+    const mine = applyScope(tasks, 'mine', VIEWER);
+    expect(mine.map((t) => t.id).sort()).toEqual(['anggota', 'milikku']);
+    // Objek identik — bukan salinan/duplikat.
+    expect(mine[0]).toBe(tasks.find((t) => t.id === mine[0]!.id));
+    expect(applyScope(tasks, 'all', VIEWER)).toHaveLength(tasks.length);
+  });
+
+  it('indikator cepat menghitung terlambat, mendekati tenggat, terhambat, dan tanpa PIC', () => {
+    const counts = quickFilterCounts(tasks, STEPS, TODAY);
+    expect(counts.TERLAMBAT).toBe(1);
+    expect(counts.MENDEKATI_TENGGAT).toBe(1);
+    expect(counts.TERHAMBAT).toBe(1);
+    // Semua kartu tanpa PIC utama: anggota, terlambat, segera, terhambat, selesai-telat
+    expect(counts.TANPA_PIC).toBe(5);
+  });
+
+  it('kartu pada step DONE tidak dihitung terlambat', () => {
+    const kinds = new Map(STEPS.map((s) => [s.id, s.kind] as const));
+    const selesai = tasks.find((t) => t.id === 'selesai-telat')!;
+    expect(matchesQuickFilter(selesai, 'TERLAMBAT', kinds, TODAY)).toBe(false);
+  });
+
+  it('buildColumns menerapkan indikator cepat', () => {
+    const columns = buildColumns(
+      tasks,
+      STEPS,
+      { ...EMPTY_FILTERS, quick: 'TERHAMBAT' },
+      { todayIso: TODAY },
+    );
+    expect(columns.get('s2')).toHaveLength(1);
+    expect(columns.get('s1')).toHaveLength(0);
+  });
+
+  it('saringan tenggat memisahkan kartu dengan & tanpa tenggat', () => {
+    const adaTenggat = buildColumns(
+      tasks,
+      STEPS,
+      { ...EMPTY_FILTERS, dueFilter: 'HAS_DUE' },
+      { todayIso: TODAY },
+    );
+    const total = [...adaTenggat.values()].flat();
+    expect(total.every((t) => t.dueDate)).toBe(true);
   });
 });
